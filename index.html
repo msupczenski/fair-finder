@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="Fair Finder"/>
+<meta name="theme-color" content="#140f0a"/>
+<title>Fair Finder</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+:root { --bg:#140f0a; --card:#23190f; --ink:#f4e6c8; --muted:#c4ad86; --accent:#e8a317; --pin:#d94c2b; --me:#3aa0ff; }
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;height:100dvh;width:100%;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--ink);overflow:hidden}
+#map{position:fixed;inset:0;width:100%;height:100%;height:100dvh;z-index:0}
+.sheet.min{max-height:72px;padding-bottom:calc(8px + env(safe-area-inset-bottom))}
+.sheet.min #results,.sheet.min .note{display:none}
+.install{position:fixed;left:12px;right:12px;bottom:calc(80px + env(safe-area-inset-bottom));z-index:600;background:#2b1d10;color:var(--ink);border-radius:14px;padding:12px;font-size:14px;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+.install b{display:block;margin-bottom:4px}
+.install button{margin-top:8px;border:0;border-radius:10px;padding:8px 12px;background:var(--accent);font-weight:700}
+.top{position:absolute;left:12px;right:12px;top:calc(10px + env(safe-area-inset-top));z-index:500;display:flex;flex-direction:column;gap:8px}
+.search{display:flex;gap:8px}
+.search input{flex:1;border:0;border-radius:14px;padding:12px 14px;font-size:16px;background:var(--card);color:var(--ink);box-shadow:0 8px 24px rgba(0,0,0,.35)}
+.search button{border:0;border-radius:14px;padding:0 14px;background:var(--accent);color:#2a1a00;font-weight:700}
+.chips{display:flex;gap:6px;overflow:auto;padding-bottom:2px}
+.chips button{flex:0 0 auto;border:0;border-radius:999px;padding:7px 12px;background:#3a2a18;color:var(--ink);font-size:13px}
+.chips button.on{background:var(--accent);color:#2a1a00}
+.sheet{position:absolute;left:0;right:0;bottom:0;z-index:500;background:linear-gradient(180deg,transparent,rgba(20,15,10,.75) 18px,var(--bg) 48px);padding:18px 12px calc(12px + env(safe-area-inset-bottom));max-height:46vh;display:flex;flex-direction:column}
+.handle{width:42px;height:5px;border-radius:99px;background:#6a5433;margin:0 auto 8px}
+#status{font-size:12px;color:var(--muted);padding:0 6px 6px}
+#results{overflow:auto;display:flex;flex-direction:column;gap:8px}
+.card{background:var(--card);border-radius:14px;padding:10px 12px}
+.card h3{margin:0 0 3px;font-size:16px}
+.card p{margin:0;font-size:13px;color:var(--muted)}
+.card .row{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-top:8px}
+.card button,.fab{border:0;border-radius:10px;padding:8px 10px;background:var(--accent);color:#2a1a00;font-weight:700;font-size:13px}
+.fabs{position:absolute;right:12px;bottom:calc(48vh + 8px);z-index:500;display:flex;flex-direction:column;gap:8px}
+.fab{width:46px;height:46px;border-radius:50%;font-size:18px;box-shadow:0 6px 16px rgba(0,0,0,.4)}
+.fab.me{background:var(--me);color:#fff}
+.note{font-size:11px;color:#8d7a58;padding:6px 6px 0}
+.leaflet-control-attribution{font-size:9px}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div class="top">
+  <div class="search">
+    <input id="q" type="search" placeholder="Search leather, funnel cake, 7th Street…" enterkeyhint="search"/>
+    <button id="go">Find</button>
+  </div>
+  <div class="chips" id="chips"></div>
+</div>
+<div class="fabs">
+  <button class="fab me" id="locate" title="My location">◎</button>
+  <button class="fab" id="follow" title="Walk mode">➤</button>
+  <button class="fab" id="sat2" title="Satellite">sat</button>
+</div>
+<div id="nudge" style="position:absolute;left:12px;bottom:calc(48vh + 8px);z-index:500;display:grid;grid-template-columns:40px 40px 40px;gap:4px;">
+  <span></span><button class="fab" id="nN">N</button><span></span>
+  <button class="fab" id="nW">W</button><button class="fab" id="n0" title="reset">↺</button><button class="fab" id="nE">E</button>
+  <span></span><button class="fab" id="nS">S</button><span></span>
+</div>
+<div class="install" id="installTip">
+  <b>Full screen on iPhone</b>
+  Open in Safari → Share → Add to Home Screen.
+  <button type="button" id="dismissTip">Got it</button>
+</div>
+<div class="sheet min">
+  <div class="handle"></div>
+  <div id="status">Loading vendors…</div>
+  <div id="results"></div>
+  <div class="note">Pins are fair-grid estimates. Official list: bloomsburgfair.com/vendors</div>
+</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const FAIR = [40.9959, -76.4632];
+const map = L.map('map', {zoomControl:false}).setView(FAIR, 17);
+L.control.zoom({position:'bottomleft'}).addTo(map);
+const streets = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom:20, attribution:'© OSM'}).addTo(map);
+const sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {maxZoom:19, attribution:'Esri'});
+let usingSat = false;
+const layers = L.layerGroup().addTo(map);
+function icon(color){
+  return L.divIcon({className:'', html:`<div style="width:16px;height:16px;background:${color};border:2px solid #fff;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,.5)"></div>`, iconSize:[16,16], iconAnchor:[8,8]});
+}
+const COLORS = {food:'#e8a317', gear:'#d94c2b', crafts:'#7bc47f', new:'#6ec8ff', other:'#c4ad86', landmark:'#ffffff', building:'#f0d48a', restroom:'#7ec8ff', aid:'#ff6b6b', gate:'#b0b0b0'};
+let offLat=parseFloat(localStorage.getItem('offLat')||'0');
+let offLng=parseFloat(localStorage.getItem('offLng')||'0');
+const STEP=0.00018;
+function applyOff(lat,lng){return [lat+offLat, lng+offLng];}
+function saveOff(){localStorage.setItem('offLat',offLat);localStorage.setItem('offLng',offLng);render();}
+let meMarker=null, meAcc=null, watchId=null, follow=false, filterCat='all', query='';
+const DATA = {vendors:[], landmarks:[]};
+
+function matches(v){
+  if(filterCat!=='all' && !(v.cats||[]).includes(filterCat)) return false;
+  if(!query) return true;
+  const blob = (v.name+' '+v.loc+' '+v.desc+' '+(v.kw||'')).toLowerCase();
+  return query.split(/\s+/).every(w => blob.includes(w));
+}
+function clearLayers(){ layers.clearLayers(); }
+function addVendor(v){
+  const color = COLORS[(v.cats||[])[0]] || COLORS.other;
+  const m = L.marker(applyOff(v.lat,v.lng), {icon:icon(color)}).addTo(layers);
+  m.bindPopup(`<b>${v.name}</b><br>${v.loc}<br><small>${v.desc||''}</small>`);
+}
+function addLandmark(l){
+  L.marker(applyOff(l.lat,l.lng), {icon:icon(COLORS[l.kind]||'#fff')}).addTo(layers).bindPopup(`<b>${l.name}</b><br>${l.loc}`);
+}
+function render(){
+  clearLayers();
+  DATA.landmarks.forEach(addLandmark);
+  const hits = DATA.vendors.filter(matches);
+  const show = (query || filterCat!=='all') ? hits.slice(0,250) : [];
+  show.forEach(addVendor);
+  const el = document.getElementById('results');
+  const list = (query || filterCat!=='all' ? hits : DATA.vendors.slice(0,8));
+  document.getElementById('status').textContent = (query||filterCat!=='all') ? `${hits.length} matches` : `${DATA.vendors.length} vendors — search leather, 7th street, cider`;
+  el.innerHTML = list.slice(0,40).map(v=>`
+    <div class="card">
+      <h3>${v.name}</h3>
+      <p>${v.loc}</p>
+      <p>${v.desc||''}</p>
+      <div class="row">
+        <button class="go">Pin on map</button>
+        <a href="https://www.google.com/maps/dir/?api=1&destination=${applyOff(v.lat,v.lng).join(',')}&travelmode=walking" target="_blank"><button>Walk</button></a>
+      </div>
+    </div>`).join('') || '<div class="card"><p>No matches.</p></div>';
+  el.querySelectorAll('button.go').forEach((b,idx)=>{
+    const v = list[idx];
+    b.onclick=()=>{
+      const pp=applyOff(v.lat,v.lng); map.setView(pp, 19);
+      addVendor(v);
+      L.popup().setLatLng(pp).setContent(`<b>${v.name}</b><br>${v.loc}`).openOn(map);
+    };
+  });
+}
+const chipData = [['all','All'],['food','Food'],['gear','Leather / bikes'],['crafts','Crafts'],['new','New 2026']];
+const chips = document.getElementById('chips');
+chipData.forEach(([id,label])=>{
+  const b=document.createElement('button');
+  b.textContent=label; if(id==='all') b.classList.add('on');
+  b.onclick=()=>{filterCat=id; [...chips.children].forEach(x=>x.classList.remove('on')); b.classList.add('on'); render();};
+  chips.appendChild(b);
+});
+const satBtn=document.createElement('button');
+satBtn.textContent='Satellite';
+satBtn.onclick=()=>{
+  usingSat=!usingSat;
+  if(usingSat){ map.removeLayer(streets); sat.addTo(map); satBtn.classList.add('on'); }
+  else { map.removeLayer(sat); streets.addTo(map); satBtn.classList.remove('on'); }
+};
+chips.appendChild(satBtn);
+document.getElementById('q').addEventListener('input', e=>{ query=e.target.value.trim().toLowerCase(); render(); });
+document.getElementById('go').onclick=()=>{ query=document.getElementById('q').value.trim().toLowerCase(); render(); };
+function placeMe(lat,lng,acc){
+  if(!meMarker){
+    meMarker = L.circleMarker([lat,lng], {radius:8,color:'#fff',weight:2,fillColor:'#3aa0ff',fillOpacity:1}).addTo(map);
+    meAcc = L.circle([lat,lng], {radius:acc||25,color:'#3aa0ff',weight:1,fillOpacity:.12}).addTo(map);
+  } else {
+    meMarker.setLatLng([lat,lng]);
+    meAcc.setLatLng([lat,lng]);
+    if(acc) meAcc.setRadius(acc);
+  }
+  if(follow) map.setView([lat,lng], Math.max(map.getZoom(),18), {animate:true});
+}
+document.getElementById('locate').onclick=()=>{
+  if(!navigator.geolocation){ alert('Location not available'); return; }
+  navigator.geolocation.getCurrentPosition(p=>{
+    placeMe(p.coords.latitude,p.coords.longitude,p.coords.accuracy);
+    map.setView([p.coords.latitude,p.coords.longitude], 18);
+  }, err=>alert('Turn on Location for this page: '+err.message), {enableHighAccuracy:true,timeout:10000});
+};
+document.getElementById('follow').onclick=()=>{
+  follow=!follow;
+  document.getElementById('follow').style.background = follow ? '#3aa0ff' : '';
+  if(follow){
+    if(watchId) navigator.geolocation.clearWatch(watchId);
+    watchId = navigator.geolocation.watchPosition(p=>{
+      placeMe(p.coords.latitude,p.coords.longitude,p.coords.accuracy);
+    }, ()=>{}, {enableHighAccuracy:true,maximumAge:1000});
+  } else if(watchId){
+    navigator.geolocation.clearWatch(watchId); watchId=null;
+  }
+};
+document.getElementById('nN').onclick=()=>{offLat+=STEP;saveOff();};
+document.getElementById('nS').onclick=()=>{offLat-=STEP;saveOff();};
+document.getElementById('nE').onclick=()=>{offLng+=STEP;saveOff();};
+document.getElementById('nW').onclick=()=>{offLng-=STEP;saveOff();};
+document.getElementById('n0').onclick=()=>{offLat=0;offLng=0;saveOff();};
+document.getElementById('sat2').onclick=()=>{satBtn.click();};
+document.querySelector('.handle').onclick=()=>{
+  document.querySelector('.sheet').classList.toggle('min');
+  setTimeout(()=>map.invalidateSize(),200);
+};
+document.getElementById('dismissTip').onclick=()=>{
+  document.getElementById('installTip').style.display='none';
+  localStorage.setItem('hideTip','1');
+};
+if(localStorage.getItem('hideTip')==='1' || window.navigator.standalone){
+  document.getElementById('installTip').style.display='none';
+}
+setTimeout(()=>map.invalidateSize(),300);
+window.addEventListener('resize',()=>map.invalidateSize());
+
+const FILES = ['vendors-0.json','vendors-1.json','vendors-2.json','vendors-3.json','vendors-4.json','vendors-5.json','vendors-6.json','vendors-7.json'];
+Promise.all([
+  fetch('landmarks.json').then(r=>r.json()),
+  ...FILES.map(f=>fetch(f).then(r=>r.json()))
+]).then(([landmarks, ...chunks])=>{
+  DATA.landmarks = landmarks;
+  DATA.vendors = chunks.flat();
+  render();
+}).catch(err=>{
+  document.getElementById('status').textContent = 'Failed to load vendor data';
+  console.error(err);
+});
+</script>
+</body>
+</html>
