@@ -61,7 +61,7 @@ html,body{margin:0;height:100%;height:100dvh;width:100%;font-family:-apple-syste
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-const VER='v9';
+const VER='v10';
 const FAIR=[40.9954,-76.4676];
 const map=L.map('map',{zoomControl:false,maxZoom:19,minZoom:15}).setView(FAIR,17);
 L.control.zoom({position:'bottomleft'}).addTo(map);
@@ -83,7 +83,15 @@ const DEFAULT_REFS=[
   {id:'s5b',label:'5th & B',st:5,ave:'b',lat:40.99555,lng:-76.46695},
   {id:'s11h',label:'11th Herb',st:11,ave:'b',lat:40.99555,lng:-76.46955},
   {id:'s2',label:'2nd St',st:2,ave:'a',lat:40.99745,lng:-76.46325},
-  {id:'eave',label:'E Ave',st:null,ave:'e',lat:40.99530,lng:-76.46550}
+  {id:'eave',label:'E Ave',st:null,ave:'e',lat:40.99530,lng:-76.46550},
+  {id:'s3b',label:'3rd & B',st:3,ave:'b',lat:40.99555,lng:-76.46615},
+  {id:'s8b',label:'8th & B',st:8,ave:'b',lat:40.99555,lng:-76.46815},
+  {id:'s12m',label:'12th Mach',st:12,ave:'b',lat:40.99550,lng:-76.46975},
+  {id:'s7a',label:'7th & A',st:7,ave:'a',lat:40.99595,lng:-76.46775},
+  {id:'s7c',label:'7th & C',st:7,ave:'c',lat:40.99515,lng:-76.46775},
+  {id:'s7d',label:'7th & D',st:7,ave:'d',lat:40.99475,lng:-76.46775},
+  {id:'fave',label:'F Ave',st:null,ave:'f',lat:40.99455,lng:-76.46620},
+  {id:'free',label:'Freedom Hall',st:3,ave:'e',lat:40.99535,lng:-76.46585}
 ];
 let REFS=DEFAULT_REFS.map(r=>({...r}));
 try{
@@ -94,7 +102,7 @@ function saveRefs(){ localStorage.setItem('fairRefsV8', JSON.stringify(REFS.map(
 const ST_LNG={}, AVE_LAT={a:40.99595,b:40.99555,c:40.99515,d:40.99475,e:40.99530,f:40.99455};
 function rebuildGrid(){
   REFS.forEach(r=>{ if(r.st) ST_LNG[r.st]=r.lng; if(r.ave) AVE_LAT[r.ave]=r.lat; });
-  const known=[2,4,5,7,11].filter(n=>ST_LNG[n]!=null).sort((a,b)=>a-b);
+  const known=Object.keys(ST_LNG).map(Number).sort((a,b)=>a-b);
   for(let n=3;n<=12;n++){
     if(ST_LNG[n]!=null) continue;
     let lo=null,hi=null;
