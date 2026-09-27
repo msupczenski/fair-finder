@@ -61,7 +61,7 @@ html,body{margin:0;height:100%;height:100dvh;width:100%;font-family:-apple-syste
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-const VER='v17';
+const VER='v18';
 const FAIR=[40.9954,-76.4676];
 const map=L.map('map',{zoomControl:false,maxZoom:19,minZoom:15}).setView(FAIR,17);
 L.control.zoom({position:'bottomleft'}).addTo(map);
@@ -129,10 +129,13 @@ function rawPos(v){
   else if(loc.includes('herb')) { lat=AVE_LAT.b; lng=ST_LNG[11]||lng; }
   else if(loc.includes('machinery')) { lat=AVE_LAT.c; lng=(ST_LNG[12]||-76.4699)-0.0004; }
   else if(n) lat=AVE_LAT.b;
-  if(loc.includes('freedom hall')) { lat=AVE_LAT.e; lng=ST_LNG[3]||lng; }
+  function R(id){ return REFS.find(x=>x.id===id); }
+  if(/\be\s*ave/.test(loc)) { const r=R('eave'); if(r){lat=r.lat;lng=r.lng;} }
+  if(loc.includes('freedom')) { const r=R('free'); if(r){lat=r.lat;lng=r.lng;} }
   if(loc.includes('liberty hall')) { lat=AVE_LAT.d; lng=ST_LNG[7]||lng; }
-  if(loc.includes('horticulture')) { const h=REFS.find(x=>x.id==='hort'); if(h){lat=h.lat;lng=h.lng;} else { lat=AVE_LAT.a; lng=ST_LNG[5]||lng; } }
-  if(loc.includes('grandstand')) { lat=AVE_LAT.e; lng=-76.4649; }
+  if(loc.includes('horticulture')) { const r=R('hort'); if(r){lat=r.lat;lng=r.lng;} }
+  if(loc.includes('cattle')) { const r=R('fave'); if(r){lat=r.lat;lng=r.lng;} }
+  if(loc.includes('grandstand')) { const r=R('eave'); if(r){lat=r.lat;lng=r.lng;} }
   return [lat,lng];
 }
 function posOf(v){ return rawPos(v); }
