@@ -47,7 +47,7 @@ html,body{margin:0;height:100%;height:100dvh;width:100%;font-family:-apple-syste
 <div id="map"></div>
 <div class="top">
   <div class="search">
-    <input id="q" type="search" placeholder="Search leather, funnel cake, 7th Street…" enterkeyhint="search"/>
+    <input id="q" type="search" placeholder="Search funnel cake, 7th Street…" enterkeyhint="search"/>
     <button id="go">Find</button>
   </div>
   <div class="chips" id="chips"></div>
@@ -71,14 +71,14 @@ html,body{margin:0;height:100%;height:100dvh;width:100%;font-family:-apple-syste
   <div class="handle"></div>
   <div id="status">Loading vendors…</div>
   <div id="results"></div>
-  <div class="note">Stand at a booth, search it, tap I'm here to lock the grid to GPS. Official list: bloomsburgfair.com/vendors</div>
+  <div class="note">Stand at a booth, search it, tap I'm here to lock the grid to GPS.</div>
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 const FAIR = [40.9959, -76.4632];
-const map = L.map('map', {zoomControl:false}).setView(FAIR, 17);
+const map = L.map('map', {zoomControl:false, maxZoom:19, minZoom:15}).setView(FAIR, 17);
 L.control.zoom({position:'bottomleft'}).addTo(map);
-const streets = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom:20, attribution:'© OSM'}).addTo(map);
+const streets = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {maxZoom:19, attribution:'© OSM © CARTO'}).addTo(map);
 const sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {maxZoom:19, attribution:'Esri'});
 let usingSat = false;
 const layers = L.layerGroup().addTo(map);
@@ -93,7 +93,6 @@ function applyOff(lat,lng){return [lat+offLat, lng+offLng];}
 function saveOff(){localStorage.setItem('offLatV2',offLat);localStorage.setItem('offLngV2',offLng);render();}
 let meMarker=null, meAcc=null, watchId=null, follow=false, filterCat='all', query='';
 const DATA = {vendors:[], landmarks:[]};
-
 function matches(v){
   if(filterCat!=='all' && !(v.cats||[]).includes(filterCat)) return false;
   if(!query) return true;
@@ -117,7 +116,7 @@ function render(){
   show.forEach(addVendor);
   const el = document.getElementById('results');
   const list = (query || filterCat!=='all' ? hits : DATA.vendors.slice(0,8));
-  document.getElementById('status').textContent = (query||filterCat!=='all') ? `${hits.length} matches` : `${DATA.vendors.length} vendors — search a booth, tap I'm here to calibrate`;
+  document.getElementById('status').textContent = (query||filterCat!=='all') ? `${hits.length} matches` : `${DATA.vendors.length} vendors`;
   el.innerHTML = list.slice(0,40).map(v=>`
     <div class="card">
       <h3>${v.name}</h3>
@@ -147,7 +146,6 @@ function render(){
         saveOff();
         placeMe(p.coords.latitude,p.coords.longitude,p.coords.accuracy);
         map.setView([p.coords.latitude,p.coords.longitude], 19);
-        alert('Grid locked to this booth. N/E/S/W still nudge if needed.');
       }, err=>alert('Location failed: '+err.message), {enableHighAccuracy:true,timeout:12000});
     };
   });
@@ -219,7 +217,7 @@ if(localStorage.getItem('hideTip')==='1' || window.navigator.standalone){
 }
 setTimeout(()=>map.invalidateSize(),300);
 window.addEventListener('resize',()=>map.invalidateSize());
-
+map.on('zoomend', ()=>{ if(map.getZoom()>19) map.setZoom(19); });
 const FILES = ['vendors-0.json','vendors-1.json','vendors-2.json','vendors-3.json','vendors-4.json','vendors-5.json','vendors-6.json','vendors-7.json'];
 Promise.all([
   fetch('landmarks.json').then(r=>r.json()),
