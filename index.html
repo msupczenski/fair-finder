@@ -61,7 +61,7 @@ html,body{margin:0;height:100%;height:100dvh;width:100%;font-family:-apple-syste
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-const VER='v18';
+const VER='v19';
 const FAIR=[40.9954,-76.4676];
 const map=L.map('map',{zoomControl:false,maxZoom:19,minZoom:15}).setView(FAIR,17);
 L.control.zoom({position:'bottomleft'}).addTo(map);
@@ -102,8 +102,10 @@ try{
   saved.forEach(s=>{ const t=REFS.find(x=>x.id===s.id); if(t){ t.lat=s.lat; t.lng=s.lng; } });
 }catch(e){}
 function saveRefs(){ localStorage.setItem('fairRefsV8', JSON.stringify(REFS.map(r=>({id:r.id,lat:r.lat,lng:r.lng})))); }
-const ST_LNG={}, AVE_LAT={a:40.99595,b:40.99555,c:40.99515,d:40.99475,e:40.99530,f:40.99455};
+const ST_LNG={}, AVE_LAT={};
 function rebuildGrid(){
+  Object.keys(ST_LNG).forEach(k=>delete ST_LNG[k]);
+  Object.keys(AVE_LAT).forEach(k=>delete AVE_LAT[k]);
   REFS.forEach(r=>{ if(r.st) ST_LNG[r.st]=r.lng; if(r.ave) AVE_LAT[r.ave]=r.lat; });
   const known=Object.keys(ST_LNG).map(Number).sort((a,b)=>a-b);
   for(let n=3;n<=12;n++){
@@ -119,23 +121,35 @@ function rebuildGrid(){
 }
 rebuildGrid();
 function rawPos(v){
-  let lat=v.lat, lng=v.lng;
   const loc=(v.loc||'').toLowerCase();
-  const sm=loc.match(/(\d+)\s*(?:st|nd|rd|th)\s*st/);
-  const am=loc.match(/\b([a-f]|bt)\s*ave/);
+  function R(id){ return REFS.find(x=>x.id===id); }
+  let lat=FAIR[0], lng=FAIR[1];
+  const sm=loc.match(/(\d+)\s*(?:st|nd|rd|th)?\s*(?:st(?:reet)?)/);
+  const am=loc.match(/\b([a-f])1?\s*ave/);
   const n=sm?+sm[1]:0;
   if(ST_LNG[n]!=null) lng=ST_LNG[n];
   if(am && AVE_LAT[am[1]]) lat=AVE_LAT[am[1]];
-  else if(loc.includes('herb')) { lat=AVE_LAT.b; lng=ST_LNG[11]||lng; }
-  else if(loc.includes('machinery')) { lat=AVE_LAT.c; lng=(ST_LNG[12]||-76.4699)-0.0004; }
-  else if(n) lat=AVE_LAT.b;
-  function R(id){ return REFS.find(x=>x.id===id); }
+  else if(n) lat=AVE_LAT.b||lat;
+  if(loc.includes('herb')) { const r=R('s11h'); if(r){lat=r.lat;lng=r.lng;} }
+  if(loc.includes('machin') || loc.includes('mach row')) { const r=R('s12m'); if(r){lat=r.lat;lng=r.lng;} }
   if(/\be\s*ave/.test(loc)) { const r=R('eave'); if(r){lat=r.lat;lng=r.lng;} }
+  if(/\bf\s*ave/.test(loc)) { const r=R('fave'); if(r){lat=r.lat;lng=r.lng;} }
   if(loc.includes('freedom')) { const r=R('free'); if(r){lat=r.lat;lng=r.lng;} }
-  if(loc.includes('liberty hall')) { lat=AVE_LAT.d; lng=ST_LNG[7]||lng; }
-  if(loc.includes('horticulture')) { const r=R('hort'); if(r){lat=r.lat;lng=r.lng;} }
-  if(loc.includes('cattle')) { const r=R('fave'); if(r){lat=r.lat;lng=r.lng;} }
-  if(loc.includes('grandstand')) { const r=R('eave'); if(r){lat=r.lat;lng=r.lng;} }
+  if(loc.includes('horticult')) { const r=R('hort'); if(r){lat=r.lat;lng=r.lng;} }
+  if(loc.includes('arts') && (loc.includes('hall')||loc.includes('industrial')||loc.includes('craft'))) { const r=R('arts'); if(r){lat=r.lat;lng=r.lng;} }
+  if(loc.includes('liberty')) { lat=AVE_LAT.d||lat; lng=ST_LNG[8]||ST_LNG[7]||lng; }
+  if(loc.includes('grandstand')) {
+    const a=R('eave'), b=R('hort');
+    if(a&&b){ lat=(a.lat+b.lat)/2; lng=(a.lng+b.lng)/2; }
+  }
+  if(loc.includes('keystone')) { const r=R('s3b'); if(r){lat=r.lat+0.00028; lng=r.lng+0.00035;} }
+  if(loc.includes('cattle')||loc.includes('livestock')) { const r=R('fave'); if(r){lat=r.lat;lng=r.lng;} }
+  const booth=loc.match(/:\s*(\d+)/);
+  if(booth){
+    const k=+booth[1];
+    lat += ((k%10)-5)*0.000012;
+    lng += ((Math.floor(k/10)%7)-3)*0.000012;
+  }
   return [lat,lng];
 }
 function posOf(v){ return rawPos(v); }
@@ -171,7 +185,7 @@ function renderVendors(){
   const sheet=document.getElementById('sheet');
   if(searching) sheet.classList.remove('min');
   const list=searching?hits:[];
-  document.getElementById('status').innerHTML=`<span>${searching?hits.length+' matches':DATA.vendors.length+' vendors'}</span><span>${VER} · drag gold dots</span>`;
+  document.getElementById('status').innerHTML=`<span>${searching?hits.length+' matches':DATA.vendors.length+' vendors'}</span><span>${VER} · survey grid</span>`;
   const el=document.getElementById('results');
   el.innerHTML=list.slice(0,40).map(v=>`
     <div class="card">
