@@ -59,7 +59,7 @@ html,body{margin:0;height:100%;height:100dvh;width:100%;font-family:-apple-syste
 </div>
 <div id="nudge" style="position:absolute;left:12px;bottom:calc(48vh + 8px);z-index:500;display:grid;grid-template-columns:40px 40px 40px;gap:4px;">
   <span></span><button class="fab" id="nN">N</button><span></span>
-  <button class="fab" id="nW">W</button><button class="fab" id="n0" title="reset">↺</button><button class="fab" id="nE">E</button>
+  <button class="fab" id="nW">W</button><button class="fab" id="n0" title="reset">↻</button><button class="fab" id="nE">E</button>
   <span></span><button class="fab" id="nS">S</button><span></span>
 </div>
 <div class="install" id="installTip">
@@ -71,7 +71,7 @@ html,body{margin:0;height:100%;height:100dvh;width:100%;font-family:-apple-syste
   <div class="handle"></div>
   <div id="status">Loading vendors…</div>
   <div id="results"></div>
-  <div class="note">Pins are fair-grid estimates. Official list: bloomsburgfair.com/vendors</div>
+  <div class="note">Stand at a booth, search it, tap I'm here to lock the grid to GPS. Official list: bloomsburgfair.com/vendors</div>
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
@@ -86,11 +86,11 @@ function icon(color){
   return L.divIcon({className:'', html:`<div style="width:16px;height:16px;background:${color};border:2px solid #fff;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,.5)"></div>`, iconSize:[16,16], iconAnchor:[8,8]});
 }
 const COLORS = {food:'#e8a317', gear:'#d94c2b', crafts:'#7bc47f', new:'#6ec8ff', other:'#c4ad86', landmark:'#ffffff', building:'#f0d48a', restroom:'#7ec8ff', aid:'#ff6b6b', gate:'#b0b0b0'};
-let offLat=parseFloat(localStorage.getItem('offLat')||'0');
-let offLng=parseFloat(localStorage.getItem('offLng')||'0');
-const STEP=0.00018;
+let offLat=parseFloat(localStorage.getItem('offLatV2')||'0');
+let offLng=parseFloat(localStorage.getItem('offLngV2')||'0');
+const STEP=0.00012;
 function applyOff(lat,lng){return [lat+offLat, lng+offLng];}
-function saveOff(){localStorage.setItem('offLat',offLat);localStorage.setItem('offLng',offLng);render();}
+function saveOff(){localStorage.setItem('offLatV2',offLat);localStorage.setItem('offLngV2',offLng);render();}
 let meMarker=null, meAcc=null, watchId=null, follow=false, filterCat='all', query='';
 const DATA = {vendors:[], landmarks:[]};
 
@@ -117,7 +117,7 @@ function render(){
   show.forEach(addVendor);
   const el = document.getElementById('results');
   const list = (query || filterCat!=='all' ? hits : DATA.vendors.slice(0,8));
-  document.getElementById('status').textContent = (query||filterCat!=='all') ? `${hits.length} matches` : `${DATA.vendors.length} vendors — search leather, 7th street, cider`;
+  document.getElementById('status').textContent = (query||filterCat!=='all') ? `${hits.length} matches` : `${DATA.vendors.length} vendors — search a booth, tap I'm here to calibrate`;
   el.innerHTML = list.slice(0,40).map(v=>`
     <div class="card">
       <h3>${v.name}</h3>
@@ -125,6 +125,7 @@ function render(){
       <p>${v.desc||''}</p>
       <div class="row">
         <button class="go">Pin on map</button>
+        <button class="here">I'm here</button>
         <a href="https://www.google.com/maps/dir/?api=1&destination=${applyOff(v.lat,v.lng).join(',')}&travelmode=walking" target="_blank"><button>Walk</button></a>
       </div>
     </div>`).join('') || '<div class="card"><p>No matches.</p></div>';
@@ -136,8 +137,22 @@ function render(){
       L.popup().setLatLng(pp).setContent(`<b>${v.name}</b><br>${v.loc}`).openOn(map);
     };
   });
+  el.querySelectorAll('button.here').forEach((b,idx)=>{
+    const v = list[idx];
+    b.onclick=()=>{
+      if(!navigator.geolocation){ alert('Turn on Location first'); return; }
+      navigator.geolocation.getCurrentPosition(p=>{
+        offLat = p.coords.latitude - v.lat;
+        offLng = p.coords.longitude - v.lng;
+        saveOff();
+        placeMe(p.coords.latitude,p.coords.longitude,p.coords.accuracy);
+        map.setView([p.coords.latitude,p.coords.longitude], 19);
+        alert('Grid locked to this booth. N/E/S/W still nudge if needed.');
+      }, err=>alert('Location failed: '+err.message), {enableHighAccuracy:true,timeout:12000});
+    };
+  });
 }
-const chipData = [['all','All'],['food','Food'],['gear','Leather / bikes'],['crafts','Crafts'],['new','New 2026']];
+const chipData = [['all','All'],['food','Food'],['crafts','Crafts'],['new','New 2026']];
 const chips = document.getElementById('chips');
 chipData.forEach(([id,label])=>{
   const b=document.createElement('button');
