@@ -71,11 +71,11 @@ html,body{margin:0;height:100%;height:100dvh;width:100%;font-family:-apple-syste
   <div class="handle"></div>
   <div id="status">Loading vendors…</div>
   <div id="results"></div>
-  <div class="note">7th & B locked to your GPS. Need 5th & A or 12th & Machinery next.</div>
+  <div class="note">Grid from your 7th & B and 5th & Veterans Way points.</div>
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-const FAIR = [40.995483, -76.467482];
+const FAIR = [40.99506, -76.46683];
 const map = L.map('map', {zoomControl:false, maxZoom:19, minZoom:15}).setView(FAIR, 17);
 L.control.zoom({position:'bottomleft'}).addTo(map);
 const streets = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {maxZoom:19, attribution:'Esri'}).addTo(map);
@@ -86,22 +86,23 @@ function icon(color){
   return L.divIcon({className:'', html:`<div style="width:16px;height:16px;background:${color};border:2px solid #fff;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,.5)"></div>`, iconSize:[16,16], iconAnchor:[8,8]});
 }
 const COLORS = {food:'#e8a317', gear:'#d94c2b', crafts:'#7bc47f', new:'#6ec8ff', other:'#c4ad86', landmark:'#ffffff', building:'#f0d48a', restroom:'#7ec8ff', aid:'#ff6b6b', gate:'#b0b0b0'};
-let offLat=parseFloat(localStorage.getItem('offLatV2')||'0');
-let offLng=parseFloat(localStorage.getItem('offLngV2')||'0');
+let offLat=parseFloat(localStorage.getItem('offLatV3')||'0');
+let offLng=parseFloat(localStorage.getItem('offLngV3')||'0');
 const STEP=0.00012;
 function applyOff(lat,lng){return [lat+offLat, lng+offLng];}
-function saveOff(){localStorage.setItem('offLatV2',offLat);localStorage.setItem('offLngV2',offLng);render();}
-const ST_LNG={2:-76.47098,3:-76.47028,4:-76.46958,5:-76.46888,6:-76.46818,7:-76.467482,8:-76.466782,9:-76.466082,10:-76.465382};
-const AVE_LAT={a:40.995063,b:40.995483,c:40.995903,d:40.996323,e:40.996743,f:40.997163};
+function saveOff(){localStorage.setItem('offLatV3',offLat);localStorage.setItem('offLngV3',offLng);render();}
+const ST_LNG={2:-76.464205,3:-76.464860,4:-76.465516,5:-76.466171,6:-76.466827,7:-76.467482,8:-76.468138,9:-76.468793,10:-76.469449,11:-76.470104,12:-76.470760};
+const AVE_LAT={a:40.99490,b:40.995483,c:40.996066,d:40.996649,e:40.997232,f:40.997815};
 function rawPos(v){
   let lat=v.lat, lng=v.lng;
   const loc=(v.loc||'').toLowerCase();
   const sm=loc.match(/(\d+)\s*(?:st|nd|rd|th)\s*st/);
   const am=loc.match(/\b([a-f])(?:1)?\s*ave/);
   const n=sm?+sm[1]:0;
-  if(n>=2&&n<=10&&ST_LNG[n]!=null) lng=ST_LNG[n];
+  if(n>=2&&n<=12&&ST_LNG[n]!=null) lng=ST_LNG[n];
   if(am&&AVE_LAT[am[1]]) lat=AVE_LAT[am[1]];
-  else if(n>=2&&n<=10) lat=AVE_LAT.b;
+  else if(loc.includes('veteran')) lat=40.994636;
+  else if(n>=2&&n<=12) lat=AVE_LAT.b;
   return [lat,lng];
 }
 function posOf(v){ const r=rawPos(v); return applyOff(r[0],r[1]); }
@@ -125,6 +126,8 @@ function addLandmark(l){
 function render(){
   clearLayers();
   DATA.landmarks.forEach(addLandmark);
+  L.circleMarker(applyOff(40.995483,-76.467482),{radius:6,color:'#e8a317'}).addTo(layers).bindPopup('Survey: 7th & B');
+  L.circleMarker(applyOff(40.994636,-76.466171),{radius:6,color:'#e8a317'}).addTo(layers).bindPopup('Survey: 5th & Veterans Way');
   const hits = DATA.vendors.filter(matches);
   const show = (query || filterCat!=='all') ? hits.slice(0,250) : [];
   show.forEach(addVendor);
