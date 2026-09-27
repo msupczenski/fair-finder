@@ -60,8 +60,7 @@ html,body{margin:0;height:100%;height:100dvh;width:100%;font-family:-apple-syste
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-const VER='v24';
-const SHOW_CAL=false;
+const VER='v25';
 const FAIR=[40.9954,-76.4676];
 const map=L.map('map',{zoomControl:false,maxZoom:19,minZoom:15}).setView(FAIR,17);
 L.control.zoom({position:'bottomleft'}).addTo(map);
@@ -69,7 +68,6 @@ const streets=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
 const sat=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Esri'});
 let usingSat=false;
 const layers=L.layerGroup().addTo(map);
-const refLayer=L.layerGroup().addTo(map);
 function icon(color){
   return L.divIcon({className:'',html:`<div style="width:16px;height:16px;background:${color};border:2px solid #fff;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,.5)"></div>`,iconSize:[16,16],iconAnchor:[8,8]});
 }
@@ -94,10 +92,6 @@ const DEFAULT_REFS=[
   {id:'arts',label:'Arts Hall',st:null,ave:null,lat:40.996338,lng:-76.467293}
 ];
 let REFS=DEFAULT_REFS.map(r=>({...r}));
-try{
-  const saved=JSON.parse(localStorage.getItem('fairRefsV8')||'[]');
-  saved.forEach(s=>{ const t=REFS.find(x=>x.id===s.id); if(t){ t.lat=s.lat; t.lng=s.lng; } });
-}catch(e){}
 const ST_LNG={}, AVE_LAT={};
 function rebuildGrid(){
   Object.keys(ST_LNG).forEach(k=>delete ST_LNG[k]);
@@ -181,7 +175,6 @@ function addVendor(v){
   const color=COLORS[(v.cats||[])[0]]||COLORS.other;
   L.marker(posOf(v),{icon:icon(color)}).addTo(layers).bindPopup(`<b>${v.name}</b><br>${v.loc}<br><small>${v.desc||''}</small>`);
 }
-function drawRefs(){ refLayer.clearLayers(); }
 function renderVendors(){
   layers.clearLayers();
   const searching=!!(query||filterCat!=='all');
@@ -218,7 +211,7 @@ function renderVendors(){
     };
   });
 }
-function render(){ drawRefs(); renderVendors(); }
+function render(){ renderVendors(); }
 const chipData=[['all','All'],['food','Food'],['crafts','Crafts'],['new','New 2026']];
 const chips=document.getElementById('chips');
 chipData.forEach(([id,label])=>{
