@@ -60,7 +60,7 @@ html,body{margin:0;height:100%;height:100dvh;width:100%;font-family:-apple-syste
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-const VER='v25';
+const VER='v26';
 const FAIR=[40.9954,-76.4676];
 const map=L.map('map',{zoomControl:false,maxZoom:19,minZoom:15}).setView(FAIR,17);
 L.control.zoom({position:'bottomleft'}).addTo(map);
@@ -192,23 +192,12 @@ function renderVendors(){
       <p>${v.desc||''}</p>
       <div class="row">
         <button class="go">Pin on map</button>
-        <button class="here">I'm here</button>
         <a href="https://www.google.com/maps/dir/?api=1&destination=${posOf(v).join(',')}&travelmode=walking" target="_blank"><button>Walk</button></a>
       </div>
     </div>`).join('');
   el.querySelectorAll('button.go').forEach((b,idx)=>{
     const v=list[idx];
     b.onclick=()=>{ const pp=posOf(v); map.setView(pp,19); addVendor(v); L.popup().setLatLng(pp).setContent(`<b>${v.name}</b><br>${v.loc}`).openOn(map); };
-  });
-  el.querySelectorAll('button.here').forEach((b,idx)=>{
-    const v=list[idx];
-    b.onclick=()=>{
-      if(!navigator.geolocation){alert('Turn on Location');return;}
-      navigator.geolocation.getCurrentPosition(p=>{
-        placeMe(p.coords.latitude,p.coords.longitude,p.coords.accuracy);
-        map.setView([p.coords.latitude,p.coords.longitude],19);
-      },err=>alert(err.message),{enableHighAccuracy:true,timeout:12000});
-    };
   });
 }
 function render(){ renderVendors(); }
