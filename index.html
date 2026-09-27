@@ -71,11 +71,11 @@ html,body{margin:0;height:100%;height:100dvh;width:100%;font-family:-apple-syste
   <div class="handle"></div>
   <div id="status">Loading vendors…</div>
   <div id="results"></div>
-  <div class="note">Grid includes 11th & Herb Row.</div>
+  <div class="note">Grandstand locked to E/F GPS.</div>
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-const FAIR = [40.9954, -76.4678];
+const FAIR = [40.9954, -76.4662];
 const map = L.map('map', {zoomControl:false, maxZoom:19, minZoom:15}).setView(FAIR, 17);
 L.control.zoom({position:'bottomleft'}).addTo(map);
 const streets = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {maxZoom:19, attribution:'Esri'}).addTo(map);
@@ -92,7 +92,7 @@ const STEP=0.00012;
 function applyOff(lat,lng){return [lat+offLat, lng+offLng];}
 function saveOff(){localStorage.setItem('offLatV3',offLat);localStorage.setItem('offLngV3',offLng);render();}
 const ST_LNG={2:-76.466180,3:-76.466441,4:-76.466701,5:-76.466171,6:-76.467222,7:-76.467482,8:-76.468018,9:-76.468555,10:-76.469091,11:-76.469628,12:-76.470165};
-const AVE_LAT={a:40.994636,b:40.995664,c:40.996692,d:40.997720,e:40.998748,f:40.999776};
+const AVE_LAT={a:40.994636,b:40.995664,c:40.996200,d:40.996700,e:40.995307,f:40.995307};
 function rawPos(v){
   let lat=v.lat, lng=v.lng;
   const loc=(v.loc||'').toLowerCase();
@@ -108,6 +108,7 @@ function rawPos(v){
   if(n===7 && am && am[1]==='b'){ lat=40.995483; lng=-76.467482; }
   if(n===5 && loc.includes('veteran')){ lat=40.994636; lng=-76.466171; }
   if(n===11 && loc.includes('herb')){ lat=40.995366; lng=-76.469628; }
+  if(loc.includes('grandstand')){ lat=40.995307; lng=-76.463637; }
   return [lat,lng];
 }
 function posOf(v){ const r=rawPos(v); return applyOff(r[0],r[1]); }
@@ -131,7 +132,7 @@ function addLandmark(l){
 function render(){
   clearLayers();
   DATA.landmarks.forEach(addLandmark);
-  [[40.995483,-76.467482,'7th & B'],[40.995845,-76.466701,'4th & B'],[40.994636,-76.466171,'5th & Veterans'],[40.995366,-76.469628,'11th & Herb Row']].forEach(p=>{
+  [[40.995483,-76.467482,'7th & B'],[40.995845,-76.466701,'4th & B'],[40.994636,-76.466171,'5th & Veterans'],[40.995366,-76.469628,'11th & Herb Row'],[40.995307,-76.463637,'E/F Grandstand']].forEach(p=>{
     L.circleMarker(applyOff(p[0],p[1]),{radius:6,color:'#e8a317'}).addTo(layers).bindPopup('Survey: '+p[2]);
   });
   const hits = DATA.vendors.filter(matches);
