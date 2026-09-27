@@ -37,7 +37,6 @@ html,body{margin:0;height:100%;height:100dvh;width:100%;font-family:-apple-syste
 .fab{width:46px;height:46px;border-radius:50%;font-size:18px;box-shadow:0 6px 16px rgba(0,0,0,.4)}
 .fab.me{background:var(--me);color:#fff}
 .leaflet-control-attribution{font-size:9px}
-.ref-tip{background:#140f0a!important;color:#f4e6c8!important;border:0!important;border-radius:6px!important;padding:2px 6px!important;font-size:11px!important;font-weight:700}
 </style>
 </head>
 <body>
@@ -61,7 +60,7 @@ html,body{margin:0;height:100%;height:100dvh;width:100%;font-family:-apple-syste
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-const VER='v22';
+const VER='v23';
 const SHOW_CAL=false;
 const FAIR=[40.9954,-76.4676];
 const map=L.map('map',{zoomControl:false,maxZoom:19,minZoom:15}).setView(FAIR,17);
@@ -73,9 +72,6 @@ const layers=L.layerGroup().addTo(map);
 const refLayer=L.layerGroup().addTo(map);
 function icon(color){
   return L.divIcon({className:'',html:`<div style="width:16px;height:16px;background:${color};border:2px solid #fff;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,.5)"></div>`,iconSize:[16,16],iconAnchor:[8,8]});
-}
-function refIcon(){
-  return L.divIcon({className:'',html:`<div style="width:14px;height:14px;background:#e8a317;border:2px solid #fff;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,.5)"></div>`,iconSize:[14,14],iconAnchor:[7,7]});
 }
 const COLORS={food:'#e8a317',gear:'#d94c2b',crafts:'#7bc47f',new:'#6ec8ff',other:'#c4ad86'};
 const DEFAULT_REFS=[
@@ -102,7 +98,6 @@ try{
   const saved=JSON.parse(localStorage.getItem('fairRefsV8')||'[]');
   saved.forEach(s=>{ const t=REFS.find(x=>x.id===s.id); if(t){ t.lat=s.lat; t.lng=s.lng; } });
 }catch(e){}
-function saveRefs(){ localStorage.setItem('fairRefsV8', JSON.stringify(REFS.map(r=>({id:r.id,lat:r.lat,lng:r.lng})))); }
 const ST_LNG={}, AVE_LAT={};
 function rebuildGrid(){
   Object.keys(ST_LNG).forEach(k=>delete ST_LNG[k]);
@@ -132,28 +127,39 @@ function rawPos(v){
   const sm=loc.match(/(\d+)\s*(?:st|nd|rd|th)?\s*(?:st(?:reet)?)/);
   const am=loc.match(/\b([a-f])1?\s*ave/);
   const n=sm?+sm[1]:0;
-  if(ST_LNG[n]!=null) lng=ST_LNG[n];
-  if(am && AVE_LAT[am[1]]) lat=AVE_LAT[am[1]];
-  else if(n) lat=AVE_LAT.b||lat;
-  if(n===2){ const r=R('s2'); if(r){ lat=r.lat; lng=r.lng; } if(/a\s*ave/.test(loc)){ const a=R('s2a'); if(a){lat=a.lat;lng=a.lng;} } }
+  const booths=[...loc.matchAll(/:\s*([a-z]*)\s*(\d+)/g)].map(x=>+x[2]);
+  const booth=booths.length?booths[0]:null;
+  const t=booth==null?0.35:Math.max(0,Math.min(1,(booth-1)/90));
+  const north=AVE_LAT.a||40.99574, mid=AVE_LAT.b||40.99548, south=AVE_LAT.d||40.99478;
+  const west=ST_LNG[12]||ST_LNG[11]||-76.4696, east=ST_LNG[3]||ST_LNG[2]||-76.4664;
+  if(n && ST_LNG[n]!=null){
+    lng=ST_LNG[n];
+    if(loc.includes('n ext')||loc.includes('north ext')||/\bstreet n\b/.test(loc)||/\bst n\b/.test(loc)){
+      const two=R('s2'); lat=north+t*((two?two.lat:40.9976)-north);
+    } else if(loc.includes('street s')||/\bst s\b/.test(loc)||loc.includes('south')){
+      lat=south-t*0.00035;
+    } else {
+      lat=south+t*(north-south);
+    }
+  } else if(am && AVE_LAT[am[1]]){
+    lat=AVE_LAT[am[1]];
+    if(/ave\s*w/.test(loc)) lng=east+t*(west-east);
+    else if(/ave\s*e/.test(loc)) lng=west+t*(east-west);
+    else lng=east+0.4*(west-east);
+  } else if(n) lat=mid;
+  if(n===2){ const r=R('s2'); if(r){ lat=r.lat+(booth?((booth-50)*0.00001):0); lng=r.lng; } }
   if(loc.includes('herb')) { const r=R('s11h'); if(r){lat=r.lat;lng=r.lng;} }
-  if(loc.includes('machin') || loc.includes('mach row')) { const r=R('s12m'); if(r){lat=r.lat;lng=r.lng;} }
+  if(loc.includes('machin') || loc.includes('mach row')) { const r=R('s12m'); if(r){lat=r.lat+(booth?((booth-20)*0.000012):0);lng=r.lng;} }
   if(/\be\s*ave/.test(loc)) {
-    const west=/e\s*ave\s*w/.test(loc);
-    const east=/e\s*ave\s*e/.test(loc);
-    const ext=loc.includes('ext');
-    const a=R('eave'), f=R('free'), c=R('fave');
-    const bm=loc.match(/(\d+)/g); const booth=bm?+bm[bm.length-1]:40;
-    const t=Math.max(0,Math.min(1,(booth-1)/80));
-    if(west && f && a && !ext){ lat=f.lat+(a.lat-f.lat)*t; lng=f.lng+(a.lng-f.lng)*t; }
-    else if(east && a && c){ lat=a.lat+(c.lat-a.lat)*0.35; lng=a.lng+(c.lng-a.lng)*0.35; }
+    const a=R('eave'), f=R('free');
+    if(f&&a){ lat=f.lat+(a.lat-f.lat)*t; lng=f.lng+(a.lng-f.lng)*t; }
     else if(a){ lat=a.lat; lng=a.lng; }
   }
   if(/\bf\s*ave/.test(loc)) { const r=R('fave'); if(r){lat=r.lat;lng=r.lng;} }
   if(loc.includes('freedom')) { const r=R('free'); if(r){lat=r.lat;lng=r.lng;} }
   if(loc.includes('horticult')) { const r=R('hort'); if(r){lat=r.lat;lng=r.lng;} }
   if(loc.includes('arts') && (loc.includes('hall')||loc.includes('industrial')||loc.includes('craft'))) { const r=R('arts'); if(r){lat=r.lat;lng=r.lng;} }
-  if(loc.includes('liberty')) { lat=AVE_LAT.d||lat; lng=ST_LNG[8]||ST_LNG[7]||lng; }
+  if(loc.includes('liberty')) { lat=south; lng=ST_LNG[8]||ST_LNG[7]||lng; }
   if(loc.includes('grandstand')) {
     const a=R('eave'), b=R('hort');
     if(a&&b){ lat=(a.lat+b.lat)/2; lng=(a.lng+b.lng)/2; }
@@ -175,19 +181,7 @@ function addVendor(v){
   const color=COLORS[(v.cats||[])[0]]||COLORS.other;
   L.marker(posOf(v),{icon:icon(color)}).addTo(layers).bindPopup(`<b>${v.name}</b><br>${v.loc}<br><small>${v.desc||''}</small>`);
 }
-function drawRefs(){
-  refLayer.clearLayers();
-  if(!SHOW_CAL) return;
-  REFS.forEach(r=>{
-    const m=L.marker([r.lat,r.lng],{icon:refIcon(),draggable:true}).addTo(refLayer);
-    m.bindTooltip(r.label,{permanent:true,direction:'top',offset:[0,-8],className:'ref-tip'});
-    m.on('dragend',()=>{
-      const p=m.getLatLng();
-      r.lat=+p.lat.toFixed(6); r.lng=+p.lng.toFixed(6);
-      saveRefs(); rebuildGrid(); renderVendors();
-    });
-  });
-}
+function drawRefs(){ refLayer.clearLayers(); }
 function renderVendors(){
   layers.clearLayers();
   const searching=!!(query||filterCat!=='all');
@@ -237,23 +231,6 @@ const satBtn=document.createElement('button');
 satBtn.textContent='Satellite';
 satBtn.onclick=()=>{ usingSat=!usingSat; if(usingSat){map.removeLayer(streets);sat.addTo(map);satBtn.classList.add('on');} else {map.removeLayer(sat);streets.addTo(map);satBtn.classList.remove('on');} };
 chips.appendChild(satBtn);
-const resetBtn=document.createElement('button');
-resetBtn.textContent='Reset dots';
-resetBtn.onclick=()=>{ localStorage.removeItem('fairRefsV8'); REFS=DEFAULT_REFS.map(r=>({...r})); rebuildGrid(); render(); };
-if(SHOW_CAL) chips.appendChild(resetBtn);
-const copyBtn=document.createElement('button');
-copyBtn.textContent='Save';
-copyBtn.onclick=()=>{
-  const payload=JSON.stringify(REFS.map(r=>({id:r.id,label:r.label,lat:r.lat,lng:r.lng})),null,2);
-  try{ navigator.clipboard.writeText(payload); }catch(e){}
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(new Blob([payload],{type:'application/json'}));
-  a.download='fair-refs.json';
-  a.click();
-  document.getElementById('sheet').classList.remove('min');
-  document.getElementById('results').innerHTML='<div class="card"><h3>Saved calibration</h3><p>Paste this in chat so I can lock it in.</p><pre style="white-space:pre-wrap;font-size:11px">'+payload.replace(/</g,'')+'</pre></div>';
-};
-if(SHOW_CAL) chips.appendChild(copyBtn);
 document.getElementById('q').addEventListener('input',e=>{query=e.target.value.trim().toLowerCase();renderVendors();});
 document.getElementById('go').onclick=()=>{query=document.getElementById('q').value.trim().toLowerCase();renderVendors();};
 function placeMe(lat,lng,acc){
