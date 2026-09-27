@@ -15,11 +15,9 @@
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100%;height:100dvh;width:100%;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--ink);overflow:hidden}
 #map{position:fixed;inset:0;width:100%;height:100%;height:100dvh;z-index:0}
-.sheet.min{max-height:72px;padding-bottom:calc(8px + env(safe-area-inset-bottom))}
+.sheet.min{max-height:56px;padding-bottom:calc(8px + env(safe-area-inset-bottom))}
 .sheet.min #results,.sheet.min .note{display:none}
-.install{position:fixed;left:12px;right:12px;bottom:calc(80px + env(safe-area-inset-bottom));z-index:600;background:#2b1d10;color:var(--ink);border-radius:14px;padding:12px;font-size:14px;box-shadow:0 8px 24px rgba(0,0,0,.4)}
-.install b{display:block;margin-bottom:4px}
-.install button{margin-top:8px;border:0;border-radius:10px;padding:8px 12px;background:var(--accent);font-weight:700}
+.install{display:none}
 .top{position:absolute;left:12px;right:12px;top:calc(10px + env(safe-area-inset-top));z-index:500;display:flex;flex-direction:column;gap:8px}
 .search{display:flex;gap:8px}
 .search input{flex:1;border:0;border-radius:14px;padding:12px 14px;font-size:16px;background:var(--card);color:var(--ink);box-shadow:0 8px 24px rgba(0,0,0,.35)}
@@ -27,29 +25,21 @@ html,body{margin:0;height:100%;height:100dvh;width:100%;font-family:-apple-syste
 .chips{display:flex;gap:6px;overflow:auto;padding-bottom:2px}
 .chips button{flex:0 0 auto;border:0;border-radius:999px;padding:7px 12px;background:#3a2a18;color:var(--ink);font-size:13px}
 .chips button.on{background:var(--accent);color:#2a1a00}
-.sheet{position:absolute;left:0;right:0;bottom:0;z-index:500;background:linear-gradient(180deg,transparent,rgba(20,15,10,.75) 18px,var(--bg) 48px);padding:18px 12px calc(12px + env(safe-area-inset-bottom));max-height:46vh;display:flex;flex-direction:column}
-.handle{width:42px;height:5px;border-radius:99px;background:#6a5433;margin:0 auto 8px}
-#status{font-size:12px;color:var(--muted);padding:0 6px 6px}
+.sheet{position:absolute;left:0;right:0;bottom:0;z-index:500;background:var(--bg);padding:10px 12px calc(10px + env(safe-area-inset-bottom));max-height:34vh;display:flex;flex-direction:column;box-shadow:0 -8px 24px rgba(0,0,0,.35)}
+.handle{width:42px;height:5px;border-radius:99px;background:#6a5433;margin:0 auto 8px;cursor:pointer}
+#status{font-size:12px;color:var(--muted);padding:0 6px 6px;display:flex;justify-content:space-between}
 #results{overflow:auto;display:flex;flex-direction:column;gap:8px}
 .card{background:var(--card);border-radius:14px;padding:10px 12px}
 .card h3{margin:0 0 3px;font-size:16px}
 .card p{margin:0;font-size:13px;color:var(--muted)}
 .card .row{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-top:8px}
 .card button,.fab{border:0;border-radius:10px;padding:8px 10px;background:var(--accent);color:#2a1a00;font-weight:700;font-size:13px}
-.fabs{position:absolute;right:12px;bottom:calc(48vh + 8px);z-index:500;display:flex;flex-direction:column;gap:8px}
+.fabs{position:absolute;right:12px;bottom:70px;z-index:500;display:flex;flex-direction:column;gap:8px}
 .fab{width:46px;height:46px;border-radius:50%;font-size:18px;box-shadow:0 6px 16px rgba(0,0,0,.4)}
 .fab.me{background:var(--me);color:#fff}
 .note{font-size:11px;color:#8d7a58;padding:6px 6px 0}
 .leaflet-control-attribution{font-size:9px}
-@media (min-width:900px){
-  .sheet{left:auto;width:360px;right:12px;top:88px;bottom:12px;max-height:none;border-radius:16px;background:rgba(20,15,10,.94);padding:12px}
-  .sheet.min{max-height:none}
-  .sheet.min #results{display:none}
-  .sheet.min .note{display:block}
-  .fabs{right:388px;bottom:24px}
-  #nudge{display:none !important}
-  .handle{display:none}
-}
+#nudge{position:absolute;left:12px;bottom:70px;z-index:500;display:grid;grid-template-columns:40px 40px 40px;gap:4px}
 </style>
 </head>
 <body>
@@ -66,24 +56,19 @@ html,body{margin:0;height:100%;height:100dvh;width:100%;font-family:-apple-syste
   <button class="fab" id="follow" title="Walk mode">➤</button>
   <button class="fab" id="sat2" title="Satellite">sat</button>
 </div>
-<div id="nudge" style="position:absolute;left:12px;bottom:calc(48vh + 8px);z-index:500;display:grid;grid-template-columns:40px 40px 40px;gap:4px;">
+<div id="nudge">
   <span></span><button class="fab" id="nN">N</button><span></span>
   <button class="fab" id="nW">W</button><button class="fab" id="n0" title="reset">↻</button><button class="fab" id="nE">E</button>
   <span></span><button class="fab" id="nS">S</button><span></span>
 </div>
-<div class="install" id="installTip">
-  <b>Full screen on iPhone</b>
-  Open in Safari → Share → Add to Home Screen.
-  <button type="button" id="dismissTip">Got it</button>
-</div>
-<div class="sheet min">
-  <div class="handle"></div>
-  <div id="status">Loading vendors…</div>
+<div class="sheet min" id="sheet">
+  <div class="handle" id="handle"></div>
+  <div id="status">Loading…</div>
   <div id="results"></div>
-  <div class="note">Gold = reference intersections on OSM streets.</div>
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
+const VER='v7';
 const FAIR = [40.9954, -76.4676];
 const map = L.map('map', {zoomControl:false, maxZoom:19, minZoom:15}).setView(FAIR, 17);
 L.control.zoom({position:'bottomleft'}).addTo(map);
@@ -151,12 +136,11 @@ function render(){
   const searching = !!(query || filterCat!=='all');
   const hits = DATA.vendors.filter(matches);
   if(searching) hits.slice(0,250).forEach(addVendor);
-  const sheet=document.querySelector('.sheet');
+  const sheet=document.getElementById('sheet');
   if(searching) sheet.classList.remove('min');
-  else sheet.classList.add('min');
   const el = document.getElementById('results');
   const list = searching ? hits : [];
-  document.getElementById('status').textContent = searching ? `${hits.length} matches` : `${DATA.vendors.length} vendors — search to pin`;
+  document.getElementById('status').innerHTML = `<span>${searching?hits.length+' matches':DATA.vendors.length+' vendors'}</span><span>${VER} · tap bar to hide</span>`;
   el.innerHTML = list.slice(0,40).map(v=>`
     <div class="card">
       <h3>${v.name}</h3>
@@ -245,17 +229,11 @@ document.getElementById('nE').onclick=()=>{offLng+=STEP;saveOff();};
 document.getElementById('nW').onclick=()=>{offLng-=STEP;saveOff();};
 document.getElementById('n0').onclick=()=>{offLat=0;offLng=0;saveOff();};
 document.getElementById('sat2').onclick=()=>{satBtn.click();};
-document.querySelector('.handle').onclick=()=>{
-  document.querySelector('.sheet').classList.toggle('min');
+document.getElementById('handle').onclick=()=>{
+  document.getElementById('sheet').classList.toggle('min');
   setTimeout(()=>map.invalidateSize(),200);
 };
-document.getElementById('dismissTip').onclick=()=>{
-  document.getElementById('installTip').style.display='none';
-  localStorage.setItem('hideTip','1');
-};
-if(localStorage.getItem('hideTip')==='1' || window.navigator.standalone){
-  document.getElementById('installTip').style.display='none';
-}
+document.getElementById('status').onclick=()=>document.getElementById('handle').click();
 setTimeout(()=>map.invalidateSize(),300);
 window.addEventListener('resize',()=>map.invalidateSize());
 map.on('zoomend', ()=>{ if(map.getZoom()>19) map.setZoom(19); });
