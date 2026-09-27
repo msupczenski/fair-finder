@@ -61,7 +61,7 @@ html,body{margin:0;height:100%;height:100dvh;width:100%;font-family:-apple-syste
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-const VER='v19';
+const VER='v20';
 const FAIR=[40.9954,-76.4676];
 const map=L.map('map',{zoomControl:false,maxZoom:19,minZoom:15}).setView(FAIR,17);
 L.control.zoom({position:'bottomleft'}).addTo(map);
@@ -132,7 +132,17 @@ function rawPos(v){
   else if(n) lat=AVE_LAT.b||lat;
   if(loc.includes('herb')) { const r=R('s11h'); if(r){lat=r.lat;lng=r.lng;} }
   if(loc.includes('machin') || loc.includes('mach row')) { const r=R('s12m'); if(r){lat=r.lat;lng=r.lng;} }
-  if(/\be\s*ave/.test(loc)) { const r=R('eave'); if(r){lat=r.lat;lng=r.lng;} }
+  if(/\be\s*ave/.test(loc)) {
+    const west=/e\s*ave\s*w/.test(loc);
+    const east=/e\s*ave\s*e/.test(loc);
+    const ext=loc.includes('ext');
+    const a=R('eave'), f=R('free'), c=R('fave');
+    const bm=loc.match(/(\d+)/g); const booth=bm?+bm[bm.length-1]:40;
+    const t=Math.max(0,Math.min(1,(booth-1)/80));
+    if(west && f && a && !ext){ lat=f.lat+(a.lat-f.lat)*t; lng=f.lng+(a.lng-f.lng)*t; }
+    else if(east && a && c){ lat=a.lat+(c.lat-a.lat)*0.35; lng=a.lng+(c.lng-a.lng)*0.35; }
+    else if(a){ lat=a.lat; lng=a.lng; }
+  }
   if(/\bf\s*ave/.test(loc)) { const r=R('fave'); if(r){lat=r.lat;lng=r.lng;} }
   if(loc.includes('freedom')) { const r=R('free'); if(r){lat=r.lat;lng=r.lng;} }
   if(loc.includes('horticult')) { const r=R('hort'); if(r){lat=r.lat;lng=r.lng;} }
@@ -144,12 +154,6 @@ function rawPos(v){
   }
   if(loc.includes('keystone')) { const r=R('s3b'); if(r){lat=r.lat+0.00028; lng=r.lng+0.00035;} }
   if(loc.includes('cattle')||loc.includes('livestock')) { const r=R('fave'); if(r){lat=r.lat;lng=r.lng;} }
-  const booth=loc.match(/:\s*(\d+)/);
-  if(booth){
-    const k=+booth[1];
-    lat += ((k%10)-5)*0.000012;
-    lng += ((Math.floor(k/10)%7)-3)*0.000012;
-  }
   return [lat,lng];
 }
 function posOf(v){ return rawPos(v); }
