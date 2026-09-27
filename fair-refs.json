@@ -1,0 +1,19 @@
+[
+  {"id": "s7b", "label": "7th & B", "lat": 40.995482, "lng": -76.467488},
+  {"id": "s4b", "label": "4th & B", "lat": 40.995846, "lng": -76.4667},
+  {"id": "s5b", "label": "5th & B", "lat": 40.995717, "lng": -76.466987},
+  {"id": "s11h", "label": "11th Herb", "lat": 40.995377, "lng": -76.469626},
+  {"id": "s2", "label": "2nd & B", "lat": 40.997591, "lng": -76.462789},
+  {"id": "s2a", "label": "2nd & A", "lat": 40.997806, "lng": -76.462988},
+  {"id": "eave", "label": "E Ave", "lat": 40.995302, "lng": -76.463664},
+  {"id": "s3b", "label": "3rd & B", "lat": 40.995994, "lng": -76.466367},
+  {"id": "s8b", "label": "8th & B", "lat": 40.995421, "lng": -76.46762},
+  {"id": "s12m", "label": "12th & B", "lat": 40.994674, "lng": -76.469251},
+  {"id": "s7a", "label": "7th & A", "lat": 40.995739, "lng": -76.467673},
+  {"id": "s7c", "label": "7th & C", "lat": 40.995111, "lng": -76.467177},
+  {"id": "s7d", "label": "7th & D", "lat": 40.994775, "lng": -76.466912},
+  {"id": "fave", "label": "Cattle Barn", "lat": 40.993702, "lng": -76.46531},
+  {"id": "free", "label": "Freedom Hall", "lat": 40.994747, "lng": -76.465815},
+  {"id": "hort", "label": "Horticulture", "lat": 40.996494, "lng": -76.466971},
+  {"id": "arts", "label": "Arts Hall", "lat": 40.996338, "lng": -76.467293}
+]
