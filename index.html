@@ -60,7 +60,8 @@ html,body{margin:0;height:100%;height:100dvh;width:100%;font-family:-apple-syste
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-const VER='v26';
+const VER='v28';
+let FIXES={};
 const FAIR=[40.9954,-76.4676];
 const map=L.map('map',{zoomControl:false,maxZoom:19,minZoom:15}).setView(FAIR,17);
 L.control.zoom({position:'bottomleft'}).addTo(map);
@@ -162,7 +163,7 @@ function rawPos(v){
   if(loc.includes('cattle')||loc.includes('livestock')) { const r=R('fave'); if(r){lat=r.lat;lng=r.lng;} }
   return [lat,lng];
 }
-function posOf(v){ return rawPos(v); }
+function posOf(v){ const f=FIXES[v.name]; if(f&&f.lat) return [f.lat,f.lng]; return rawPos(v); }
 let meMarker=null,meAcc=null,watchId=null,follow=false,filterCat='all',query='';
 const DATA={vendors:[],landmarks:[]};
 function matches(v){
@@ -238,8 +239,13 @@ setTimeout(()=>map.invalidateSize(),300);
 map.on('zoomend',()=>{ if(map.getZoom()>19) map.setZoom(19); });
 Promise.all([
   fetch('landmarks.json').then(r=>r.json()),
+  fetch('vendor-fixes.json').then(r=>r.json()).catch(()=>({})),
   ...['vendors-0.json','vendors-1.json','vendors-2.json','vendors-3.json','vendors-4.json','vendors-5.json','vendors-6.json','vendors-7.json'].map(f=>fetch(f).then(r=>r.json()))
-]).then(([landmarks,...chunks])=>{ DATA.landmarks=landmarks; DATA.vendors=chunks.flat(); render(); }).catch(err=>{ document.getElementById('status').textContent='Failed to load'; console.error(err); });
+]).then(([landmarks,fixes,...chunks])=>{
+  FIXES=Object.assign({},fixes||{});
+  try{ Object.assign(FIXES, JSON.parse(localStorage.getItem('fairVendorFixes')||'{}')); }catch(e){}
+  DATA.landmarks=landmarks; DATA.vendors=chunks.flat(); render();
+}).catch(err=>{ document.getElementById('status').textContent='Failed to load'; console.error(err); });
 </script>
 </body>
 </html>
