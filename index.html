@@ -61,7 +61,7 @@ html,body{margin:0;height:100%;height:100dvh;width:100%;font-family:-apple-syste
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-const VER='v12';
+const VER='v13';
 const FAIR=[40.9954,-76.4676];
 const map=L.map('map',{zoomControl:false,maxZoom:19,minZoom:15}).setView(FAIR,17);
 L.control.zoom({position:'bottomleft'}).addTo(map);
@@ -212,6 +212,13 @@ const resetBtn=document.createElement('button');
 resetBtn.textContent='Reset dots';
 resetBtn.onclick=()=>{ localStorage.removeItem('fairRefsV8'); REFS=DEFAULT_REFS.map(r=>({...r})); rebuildGrid(); render(); };
 chips.appendChild(resetBtn);
+const copyBtn=document.createElement('button');
+copyBtn.textContent='Copy dots';
+copyBtn.onclick=()=>{
+  const payload=JSON.stringify(REFS.map(r=>({id:r.id,label:r.label,lat:r.lat,lng:r.lng})),null,2);
+  navigator.clipboard.writeText(payload).then(()=>alert('Copied. Paste that in chat.')).catch(()=>{ prompt('Copy this:', payload); });
+};
+chips.appendChild(copyBtn);
 document.getElementById('q').addEventListener('input',e=>{query=e.target.value.trim().toLowerCase();renderVendors();});
 document.getElementById('go').onclick=()=>{query=document.getElementById('q').value.trim().toLowerCase();renderVendors();};
 function placeMe(lat,lng,acc){
