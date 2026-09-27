@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"/>
+<meta name="robots" content="noindex,nofollow"/>
+<title>Fair Finder — Calibrate</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+:root{--bg:#140f0a;--card:#23190f;--ink:#f4e6c8;--muted:#c4ad86;--accent:#e8a317}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;height:100dvh;font-family:-apple-system,sans-serif;background:var(--bg);color:var(--ink);overflow:hidden}
+#gate{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:999;background:var(--bg)}
+#gate form{display:flex;flex-direction:column;gap:10px;width:min(320px,90vw)}
+#gate input,#gate button,.bar input,.bar button{border:0;border-radius:12px;padding:12px;font-size:16px}
+#gate input,.bar input{background:var(--card);color:var(--ink)}
+#gate button,.bar button{background:var(--accent);color:#2a1a00;font-weight:700}
+#map{position:fixed;inset:0}
+.bar{position:absolute;left:10px;right:10px;top:calc(8px + env(safe-area-inset-top));z-index:500;display:flex;flex-direction:column;gap:6px}
+.row{display:flex;gap:6px}
+.row input{flex:1}
+.list{max-height:28vh;overflow:auto;background:rgba(20,15,10,.92);border-radius:12px;padding:6px}
+.item{padding:8px 10px;border-radius:8px;cursor:pointer}
+.item:hover,.item.on{background:#3a2a18}
+.item small{display:block;color:var(--muted)}
+.fabs{position:absolute;right:12px;bottom:calc(16px + env(safe-area-inset-bottom));z-index:500;display:flex;flex-direction:column;gap:8px}
+.fab{width:46px;height:46px;border:0;border-radius:50%;background:var(--accent);font-weight:700}
+#status{font-size:12px;color:var(--muted);padding:0 4px}
+</style>
+</head>
+<body>
+<div id="gate">
+  <form id="unlock">
+    <div>Calibrate mode</div>
+    <input id="pw" type="password" placeholder="password" autocomplete="current-password"/>
+    <button type="submit">Open</button>
+  </form>
+</div>
+<div id="app" style="display:none">
+  <div id="map"></div>
+  <div class="bar">
+    <div class="row">
+      <input id="q" type="search" placeholder="Search vendor…"/>
+      <button id="export">Export</button>
+    </div>
+    <div id="status"></div>
+    <div class="list" id="list"></div>
+  </div>
+  <div class="fabs">
+    <button class="fab" id="here" title="Drop at my GPS">GPS</button>
+  </div>
+</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const PASS='bloom26';
+const KEY='fairVendorFixes';
+if(sessionStorage.getItem('fairCal')==='1') openApp();
+document.getElementById('unlock').onsubmit=e=>{
+  e.preventDefault();
+  if(document.getElementById('pw').value===PASS){ sessionStorage.setItem('fairCal','1'); openApp(); }
+  else alert('Nope');
+};
+function loadFixes(){ try{return JSON.parse(localStorage.getItem(KEY)||'{}');}catch(e){return{};} }
+function saveFixes(o){ localStorage.setItem(KEY, JSON.stringify(o)); }
+let VENDORS=[], selected=null, marker=null, map;
+function openApp(){
+  document.getElementById('gate').style.display='none';
+  document.getElementById('app').style.display='block';
+  map=L.map('map',{maxZoom:19}).setView([40.9954,-76.4676],17);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map);
+  map.on('click',e=>{ if(!selected) return; place(e.latlng.lat,e.latlng.lng); });
+  Promise.all(['vendors-0','vendors-1','vendors-2','vendors-3','vendors-4','vendors-5','vendors-6','vendors-7'].map(f=>fetch(f+'.json').then(r=>r.json())))
+    .then(chunks=>{ VENDORS=chunks.flat(); renderList(); updateStatus(); });
+  document.getElementById('q').oninput=renderList;
+  document.getElementById('export').onclick=()=>{
+    const data=JSON.stringify(loadFixes(),null,2);
+    try{navigator.clipboard.writeText(data);}catch(e){}
+    const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([data],{type:'application/json'})); a.download='vendor-fixes.json'; a.click();
+  };
+  document.getElementById('here').onclick=()=>{
+    if(!selected){alert('Pick a vendor first');return;}
+    navigator.geolocation.getCurrentPosition(p=>place(p.coords.latitude,p.coords.longitude),err=>alert(err.message),{enableHighAccuracy:true});
+  };
+}
+function place(lat,lng){
+  lat=+lat.toFixed(6); lng=+lng.toFixed(6);
+  const fixes=loadFixes();
+  fixes[selected.name]={name:selected.name,loc:selected.loc,lat,lng};
+  saveFixes(fixes);
+  if(!marker){ marker=L.marker([lat,lng],{draggable:true}).addTo(map); marker.on('dragend',()=>{ const p=marker.getLatLng(); place(p.lat,p.lng); }); }
+  else marker.setLatLng([lat,lng]);
+  map.setView([lat,lng],19);
+  updateStatus();
+}
+function renderList(){
+  const q=document.getElementById('q').value.trim().toLowerCase();
+  const hits=!q?[]:VENDORS.filter(v=>(v.name+' '+v.loc).toLowerCase().includes(q)).slice(0,30);
+  const fixes=loadFixes();
+  document.getElementById('list').innerHTML=hits.map(v=>{
+    const f=fixes[v.name];
+    return `<div class="item${selected&&selected.name===v.name?' on':''}" data-name="${v.name.replace(/"/g,'')}"><b>${v.name}</b><small>${v.loc}${f?' · pinned '+f.lat.toFixed(5)+', '+f.lng.toFixed(5):''}</small></div>`;
+  }).join('')|| (q?'No matches':'Type a vendor name');
+  document.querySelectorAll('.item').forEach(el=>{
+    el.onclick=()=>{ selected=VENDORS.find(v=>v.name===el.dataset.name); renderList(); const f=loadFixes()[selected.name]; if(f){ place(f.lat,f.lng); } else { if(marker){map.removeLayer(marker);marker=null;} updateStatus(); } };
+  });
+}
+function updateStatus(){
+  const n=Object.keys(loadFixes()).length;
+  document.getElementById('status').textContent=(selected?selected.name+' · tap map or GPS, then drag. ':'')+n+' pins saved. Export and send me the file.';
+}
+</script>
+</body>
+</html>
