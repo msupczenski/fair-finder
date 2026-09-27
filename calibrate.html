@@ -17,6 +17,7 @@ input{background:var(--card);color:var(--ink)}
 button{background:var(--accent);color:#2a1a00;font-weight:700}
 button.ghost{background:#3a2a18;color:var(--ink)}
 button.danger{background:#b33;color:#fff}
+button.me{background:#3aa0ff;color:#fff}
 #map{position:fixed;inset:0}
 .bar{position:absolute;left:10px;right:10px;top:calc(8px + env(safe-area-inset-top));z-index:500;display:flex;flex-direction:column;gap:6px}
 .row{display:flex;gap:6px}
@@ -25,8 +26,8 @@ button.danger{background:#b33;color:#fff}
 .item{padding:8px 10px;border-radius:8px;cursor:pointer}
 .item:hover,.item.on{background:#3a2a18}
 .item small{display:block;color:var(--muted)}
-.fabs{position:absolute;right:12px;bottom:calc(88px + env(safe-area-inset-bottom));z-index:500;display:flex;flex-direction:column;gap:8px}
-.fab{width:48px;height:48px;border-radius:50%;padding:0}
+.fabs{position:absolute;right:12px;bottom:calc(120px + env(safe-area-inset-bottom));z-index:500;display:flex;flex-direction:column;gap:8px}
+.fab{width:48px;height:48px;border-radius:50%;padding:0;background:#3aa0ff;color:#fff}
 #status{font-size:12px;color:var(--muted);padding:0 4px}
 .dot-label{background:#e8a317;color:#2a1a00;border:0;border-radius:8px;padding:2px 6px;font-weight:700;font-size:11px;box-shadow:0 2px 6px rgba(0,0,0,.4);white-space:nowrap}
 .sheet{position:absolute;left:0;right:0;bottom:0;z-index:600;background:var(--bg);padding:10px 12px calc(12px + env(safe-area-inset-bottom));display:none;box-shadow:0 -8px 24px rgba(0,0,0,.4)}
@@ -55,13 +56,14 @@ button.danger{background:#b33;color:#fff}
     <div class="list" id="list"></div>
   </div>
   <div class="fabs">
-    <button class="fab" id="here">GPS</button>
+    <button class="fab" id="locate" title="My location">◎</button>
   </div>
   <div class="sheet" id="sheet">
     <h3 id="sheetName">Vendor</h3>
     <p id="sheetLoc"></p>
     <div class="row">
-      <button id="editBtn">Edit / Move</button>
+      <button class="me" id="pinHere">Pin here</button>
+      <button id="editBtn">Edit</button>
       <button class="danger" id="delBtn">Delete</button>
       <button class="ghost" id="closeBtn">Close</button>
     </div>
@@ -81,18 +83,47 @@ document.getElementById('unlock').onsubmit=e=>{
 function loadFixes(){ try{return JSON.parse(localStorage.getItem(KEY)||'{}');}catch(e){return{};} }
 function saveFixes(o){ localStorage.setItem(KEY, JSON.stringify(o)); }
 let VENDORS=[], selected=null, map, markers={}, showPinned=false, moving=false;
+let meMarker=null, meAcc=null, myPos=null;
 function iconFor(on){
   const c=on?'#3aa0ff':'#e8a317';
   return L.divIcon({className:'',html:`<div style="width:14px;height:14px;background:${c};border:2px solid #fff;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,.5)"></div>`,iconSize:[14,14],iconAnchor:[7,7]});
+}
+function placeMe(lat,lng,acc){
+  myPos=[lat,lng];
+  if(!meMarker){
+    meMarker=L.circleMarker([lat,lng],{radius:8,color:'#fff',weight:2,fillColor:'#3aa0ff',fillOpacity:1}).addTo(map);
+    meAcc=L.circle([lat,lng],{radius:acc||20,color:'#3aa0ff',weight:1,fillOpacity:.12}).addTo(map);
+  } else {
+    meMarker.setLatLng([lat,lng]);
+    meAcc.setLatLng([lat,lng]);
+    if(acc) meAcc.setRadius(acc);
+  }
+}
+function startGps(center){
+  if(!navigator.geolocation){alert('Turn on Location');return;}
+  navigator.geolocation.getCurrentPosition(p=>{
+    placeMe(p.coords.latitude,p.coords.longitude,p.coords.accuracy);
+    if(center) map.setView([p.coords.latitude,p.coords.longitude],18);
+  },err=>alert(err.message),{enableHighAccuracy:true,timeout:12000});
+  navigator.geolocation.watchPosition(p=>placeMe(p.coords.latitude,p.coords.longitude,p.coords.accuracy),()=>{},{enableHighAccuracy:true,maximumAge:1000});
+}
+function pinHere(){
+  if(!selected){alert('Search a vendor first');return;}
+  if(myPos){ upsert(selected,myPos[0],myPos[1]); return; }
+  navigator.geolocation.getCurrentPosition(p=>{
+    placeMe(p.coords.latitude,p.coords.longitude,p.coords.accuracy);
+    upsert(selected,p.coords.latitude,p.coords.longitude);
+  },err=>alert(err.message),{enableHighAccuracy:true,timeout:12000});
 }
 function openApp(){
   document.getElementById('gate').style.display='none';
   document.getElementById('app').style.display='block';
   map=L.map('map',{maxZoom:19}).setView(FAIR,17);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map);
+  startGps(true);
   map.on('click',e=>{
     if(moving && selected){ upsert(selected, e.latlng.lat, e.latlng.lng); moving=false; updateStatus(); return; }
-    if(!selected){ document.getElementById('status').textContent='Search and tap a vendor first, then tap the map.'; return; }
+    if(!selected){ document.getElementById('status').textContent='Search and tap a vendor first.'; return; }
     if(!loadFixes()[selected.name]) upsert(selected, e.latlng.lat, e.latlng.lng);
   });
   Promise.all(['vendors-0','vendors-1','vendors-2','vendors-3','vendors-4','vendors-5','vendors-6','vendors-7'].map(f=>fetch(f+'.json').then(r=>r.json())))
@@ -104,16 +135,14 @@ function openApp(){
     try{navigator.clipboard.writeText(data);}catch(e){}
     const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([data],{type:'application/json'})); a.download='vendor-fixes.json'; a.click();
   };
-  document.getElementById('here').onclick=()=>{
-    if(!selected){alert('Pick a vendor first');return;}
-    navigator.geolocation.getCurrentPosition(p=>upsert(selected,p.coords.latitude,p.coords.longitude),err=>alert(err.message),{enableHighAccuracy:true});
-  };
+  document.getElementById('locate').onclick=()=>startGps(true);
+  document.getElementById('pinHere').onclick=pinHere;
   document.getElementById('editBtn').onclick=()=>{
     if(!selected) return;
     moving=true;
     const m=markers[selected.name];
     if(m) m.dragging.enable();
-    document.getElementById('status').textContent='Move mode: drag the blue dot or tap a new spot.';
+    document.getElementById('status').textContent='Move mode: drag the blue pin or tap a new spot.';
   };
   document.getElementById('delBtn').onclick=()=>{
     if(!selected) return;
@@ -134,6 +163,7 @@ function selectVendor(v){
   selected=v; moving=false; showSheet(v);
   const f=loadFixes()[v.name];
   if(f) map.setView([f.lat,f.lng],19);
+  else if(myPos) map.setView(myPos,18);
   drawAll(); renderList(); updateStatus();
 }
 function upsert(v,lat,lng){
@@ -178,7 +208,7 @@ function renderList(){
   let rows;
   if(showPinned || !q){
     rows=Object.values(fixes);
-    if(!rows.length && !q){ document.getElementById('list').innerHTML='Search a vendor, tap it, then tap the map. Pins stay.'; return; }
+    if(!rows.length && !q){ document.getElementById('list').innerHTML='Search vendor → Pin here.'; return; }
   } else {
     rows=VENDORS.filter(v=>(v.name+' '+v.loc).toLowerCase().includes(q)).slice(0,40);
   }
@@ -193,7 +223,7 @@ function renderList(){
 }
 function updateStatus(){
   const n=Object.keys(loadFixes()).length;
-  document.getElementById('status').textContent=(selected?('Selected: '+selected.name+'. '):'Pick a vendor. ')+n+' pins on map.';
+  document.getElementById('status').textContent=(selected?('Selected: '+selected.name+' · Pin here when you are at the stand. '):'Search a vendor. ')+n+' pins.';
 }
 </script>
 </body>
