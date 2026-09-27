@@ -41,6 +41,14 @@ html,body{margin:0;height:100%;height:100dvh;width:100%;font-family:-apple-syste
 .fab.me{background:var(--me);color:#fff}
 .note{font-size:11px;color:#8d7a58;padding:6px 6px 0}
 .leaflet-control-attribution{font-size:9px}
+@media (min-width:900px){
+  .sheet{left:auto;width:380px;right:12px;top:88px;bottom:12px;max-height:none;border-radius:16px;background:rgba(20,15,10,.94);padding:12px}
+  .sheet.min{max-height:none}
+  .sheet.min #results,.sheet.min .note{display:flex}
+  .fabs{right:408px;bottom:24px}
+  #nudge{bottom:24px}
+  .handle{display:none}
+}
 </style>
 </head>
 <body>
@@ -71,7 +79,7 @@ html,body{margin:0;height:100%;height:100dvh;width:100%;font-family:-apple-syste
   <div class="handle"></div>
   <div id="status">Loading vendors…</div>
   <div id="results"></div>
-  <div class="note">Gold dots sit on OSM street names (7th, 5th, 3rd, 2nd).</div>
+  <div class="note">Search a vendor to list and pin it.</div>
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
@@ -132,6 +140,8 @@ function render(){
   const hits = DATA.vendors.filter(matches);
   const show = (query || filterCat!=='all') ? hits.slice(0,250) : [];
   show.forEach(addVendor);
+  const sheet=document.querySelector('.sheet');
+  if(query || filterCat!=='all') sheet.classList.remove('min');
   const el = document.getElementById('results');
   const list = (query || filterCat!=='all' ? hits : DATA.vendors.slice(0,8));
   document.getElementById('status').textContent = (query||filterCat!=='all') ? `${hits.length} matches` : `${DATA.vendors.length} vendors`;
