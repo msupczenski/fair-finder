@@ -22,7 +22,8 @@ button.me{background:#3aa0ff;color:#fff}
 .bar{position:absolute;left:10px;right:10px;top:calc(8px + env(safe-area-inset-top));z-index:500;display:flex;flex-direction:column;gap:6px}
 .row{display:flex;gap:6px}
 .row input{flex:1}
-.list{max-height:min(38vh,280px);overflow:auto;background:rgba(20,15,10,.94);border-radius:12px;padding:6px}
+.list{display:none;max-height:min(38vh,280px);overflow:auto;background:rgba(20,15,10,.94);border-radius:12px;padding:6px}
+.list.show{display:block}
 body.typing .sheet{display:none}
 body.typing .fabs{visibility:hidden}
 .item{padding:8px 10px;border-radius:8px;cursor:pointer}
@@ -51,7 +52,6 @@ body.typing .fabs{visibility:hidden}
   <div class="bar">
     <div class="row">
       <input id="q" type="search" placeholder="Search vendor to add…" autocomplete="off" autocapitalize="off" spellcheck="false" list="qnames"/>
-      <button id="pins">Pins</button>
       <button id="export">Export</button>
     </div>
     <div id="status"></div>
@@ -85,7 +85,7 @@ document.getElementById('unlock').onsubmit=e=>{
 };
 function loadFixes(){ try{return JSON.parse(localStorage.getItem(KEY)||'{}');}catch(e){return{};} }
 function saveFixes(o){ localStorage.setItem(KEY, JSON.stringify(o)); }
-let VENDORS=[], selected=null, map, markers={}, showPinned=false, moving=false;
+let VENDORS=[], selected=null, map, markers={}, moving=false;
 let meMarker=null, meAcc=null, myPos=null;
 function iconFor(on){
   const c=on?'#3aa0ff':'#e8a317';
@@ -118,6 +118,18 @@ function pinHere(){
     upsert(selected,p.coords.latitude,p.coords.longitude);
   },err=>alert(err.message),{enableHighAccuracy:true,timeout:12000});
 }
+function clearSearch(){
+  const q=document.getElementById('q');
+  q.value='';
+  q.blur();
+  document.body.classList.remove('typing');
+  hideList();
+}
+function hideList(){
+  const el=document.getElementById('list');
+  el.classList.remove('show');
+  el.innerHTML='';
+}
 function openApp(){
   document.getElementById('gate').style.display='none';
   document.getElementById('app').style.display='block';
@@ -130,9 +142,9 @@ function openApp(){
     if(!loadFixes()[selected.name]) upsert(selected, e.latlng.lat, e.latlng.lng);
   });
   Promise.all(['vendors-0','vendors-1','vendors-2','vendors-3','vendors-4','vendors-5','vendors-6','vendors-7'].map(f=>fetch(f+'.json').then(r=>r.json())))
-    .then(chunks=>{ VENDORS=chunks.flat(); document.getElementById('qnames').innerHTML=VENDORS.map(v=>`<option value="${v.name.replace(/\"/g,'')}"></option>`).join(''); drawAll(); renderList(); updateStatus(); });
+    .then(chunks=>{ VENDORS=chunks.flat(); document.getElementById('qnames').innerHTML=VENDORS.map(v=>`<option value="${v.name.replace(/\"/g,'')}"></option>`).join(''); drawAll(); hideList(); updateStatus(); });
   const qEl=document.getElementById('q');
-  qEl.oninput=()=>{ showPinned=false; document.body.classList.add('typing'); renderList(); };
+  qEl.oninput=()=>{ document.body.classList.add('typing'); renderList(); };
   qEl.onfocus=()=>document.body.classList.add('typing');
   qEl.onblur=()=>setTimeout(()=>document.body.classList.remove('typing'),200);
   function fitList(){
@@ -143,7 +155,6 @@ function openApp(){
     document.getElementById('list').style.maxHeight=Math.max(120,Math.min(room,320))+'px';
   }
   if(window.visualViewport){ visualViewport.addEventListener('resize',fitList); visualViewport.addEventListener('scroll',fitList); }
-  document.getElementById('pins').onclick=()=>{ showPinned=true; document.getElementById('q').value=''; renderList(); };
   document.getElementById('export').onclick=()=>{
     const data=JSON.stringify(loadFixes(),null,2);
     try{navigator.clipboard.writeText(data);}catch(e){}
@@ -163,9 +174,9 @@ function openApp(){
     if(!confirm('Delete pin for '+selected.name+'?')) return;
     const fixes=loadFixes(); delete fixes[selected.name]; saveFixes(fixes);
     if(markers[selected.name]){ map.removeLayer(markers[selected.name]); delete markers[selected.name]; }
-    selected=null; moving=false; hideSheet(); drawAll(); renderList(); updateStatus();
+    selected=null; moving=false; hideSheet(); hideList(); updateStatus();
   };
-  document.getElementById('closeBtn').onclick=()=>{ selected=null; moving=false; hideSheet(); drawAll(); updateStatus(); };
+  document.getElementById('closeBtn').onclick=()=>{ selected=null; moving=false; hideSheet(); hideList(); drawAll(); updateStatus(); };
 }
 function showSheet(v){
   document.getElementById('sheetName').textContent=v.name;
@@ -178,7 +189,7 @@ function selectVendor(v){
   const f=loadFixes()[v.name];
   if(f) map.setView([f.lat,f.lng],19);
   else if(myPos) map.setView(myPos,18);
-  drawAll(); renderList(); updateStatus();
+  drawAll(); hideList(); updateStatus();
 }
 function upsert(v,lat,lng){
   lat=+lat.toFixed(6); lng=+lng.toFixed(6);
@@ -187,8 +198,8 @@ function upsert(v,lat,lng){
   saveFixes(fixes);
   putMarker(fixes[v.name], true);
   showSheet(v);
+  clearSearch();
   updateStatus();
-  renderList();
 }
 function putMarker(f, focus){
   if(markers[f.name]){
@@ -218,32 +229,33 @@ function drawAll(){
 }
 function renderList(){
   const q=document.getElementById('q').value.trim().toLowerCase();
+  const el=document.getElementById('list');
+  if(!q){ hideList(); return; }
   const fixes=loadFixes();
-  let rows;
-  if(showPinned || !q){
-    rows=Object.values(fixes);
-    if(!rows.length && !q){ document.getElementById('list').innerHTML='Search vendor → Pin here.'; return; }
-  } else {
-    rows=VENDORS.filter(v=>(v.name+' '+v.loc).toLowerCase().includes(q))
-      .sort((a,b)=>{
-        const an=a.name.toLowerCase(), bn=b.name.toLowerCase();
-        const sa=an===q?0:an.startsWith(q)?1:an.includes(q)?2:3;
-        const sb=bn===q?0:bn.startsWith(q)?1:bn.includes(q)?2:3;
-        return sa-sb||an.localeCompare(bn);
-      }).slice(0,40);
-  }
-  document.getElementById('list').innerHTML=rows.map(v=>{
+  const rows=VENDORS.filter(v=>(v.name+' '+v.loc).toLowerCase().includes(q))
+    .sort((a,b)=>{
+      const an=a.name.toLowerCase(), bn=b.name.toLowerCase();
+      const sa=an===q?0:an.startsWith(q)?1:an.includes(q)?2:3;
+      const sb=bn===q?0:bn.startsWith(q)?1:bn.includes(q)?2:3;
+      return sa-sb||an.localeCompare(bn);
+    }).slice(0,20);
+  el.classList.add('show');
+  el.innerHTML=rows.map(v=>{
     const f=fixes[v.name];
-    const on=selected&&selected.name===v.name;
-    return `<div class="item${on?' on':''}" data-name="${String(v.name).replace(/"/g,'')}"><b>${v.name}</b><small>${v.loc||''}${f?' · pinned':''}</small></div>`;
-  }).join('')||'No matches';
-  document.querySelectorAll('.item').forEach(el=>{
-    el.onclick=()=>selectVendor(VENDORS.find(v=>v.name===el.dataset.name)||loadFixes()[el.dataset.name]);
+    return `<div class="item" data-name="${String(v.name).replace(/"/g,'')}"><b>${v.name}</b><small>${v.loc||''}${f?' · pinned':''}</small></div>`;
+  }).join('')||'<div class="item">No matches</div>';
+  el.querySelectorAll('.item').forEach(node=>{
+    node.onclick=()=>{
+      const v=VENDORS.find(x=>x.name===node.dataset.name);
+      if(!v) return;
+      selectVendor(v);
+      clearSearch();
+    };
   });
 }
 function updateStatus(){
   const n=Object.keys(loadFixes()).length;
-  document.getElementById('status').textContent=(selected?('Selected: '+selected.name+' · Pin here when you are at the stand. '):'Search a vendor. ')+n+' pins.';
+  document.getElementById('status').textContent=(selected?('Selected: '+selected.name+' · tap the pin to edit. '):'Search a vendor. ')+n+' pins.';
 }
 </script>
 </body>
