@@ -22,5 +22,71 @@
     "loc": "Free Stage Blvd: 14/16",
     "lat": 40.99427,
     "lng": -76.467206
+  },
+  "Crabby's John's": {
+    "name": "Crabby's John's",
+    "loc": "B Ave W:101",
+    "lat": 40.995046,
+    "lng": -76.468412
+  },
+  "Mini's Chocolate Tap": {
+    "name": "Mini's Chocolate Tap",
+    "loc": "10th St: 15",
+    "lat": 40.99496,
+    "lng": -76.468241
+  },
+  "Cedar Redwood Signs": {
+    "name": "Cedar Redwood Signs",
+    "loc": "10th Street: 35 & 37",
+    "lat": 40.994787,
+    "lng": -76.468134
+  },
+  "Danny's BBQ": {
+    "name": "Danny's BBQ",
+    "loc": "10th Street: 40/41; C Ave W: 94, 96, 98",
+    "lat": 40.994694,
+    "lng": -76.468051
+  },
+  "Snyder Concession's (Emogene)": {
+    "name": "Snyder Concession's (Emogene)",
+    "loc": "10th Street: 105; D Ave W:87",
+    "lat": 40.994509,
+    "lng": -76.467878
+  },
+  "Bellum's Concessions": {
+    "name": "Bellum's Concessions",
+    "loc": "Multiple Locations",
+    "lat": 40.994422,
+    "lng": -76.46695
+  },
+  "Stromboli Land II": {
+    "name": "Stromboli Land II",
+    "loc": "7th St: 67; E Ave W: 82",
+    "lat": 40.994567,
+    "lng": -76.466725
+  },
+  "Brackney Leather": {
+    "name": "Brackney Leather",
+    "loc": "7th Street: 39; 7th Street: 43; 7th Street: 47; E Ave W:P",
+    "lat": 40.994881,
+    "lng": -76.467024
+  },
+  "Peter Pepper's PA Pickles": {
+    "name": "Peter Pepper's PA Pickles",
+    "loc": "E Ave E:P",
+    "lat": 40.995018,
+    "lng": -76.467368
+  },
+  "Eat the Bowl": {
+    "name": "Eat the Bowl",
+    "loc": "9th Street: 14",
+    "lat": 40.995115,
+    "lng": -76.467614
+  },
+  "Polock's Pizza": {
+    "name": "Polock's Pizza",
+    "loc": "6th Street: 7; A Ave W: 109; A Ave W: 111",
+    "lat": 40.995454,
+    "lng": -76.467598
   }
 }
