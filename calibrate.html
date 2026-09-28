@@ -22,7 +22,9 @@ button.me{background:#3aa0ff;color:#fff}
 .bar{position:absolute;left:10px;right:10px;top:calc(8px + env(safe-area-inset-top));z-index:500;display:flex;flex-direction:column;gap:6px}
 .row{display:flex;gap:6px}
 .row input{flex:1}
-.list{max-height:22vh;overflow:auto;background:rgba(20,15,10,.94);border-radius:12px;padding:6px}
+.list{max-height:min(38vh,280px);overflow:auto;background:rgba(20,15,10,.94);border-radius:12px;padding:6px}
+body.typing .sheet{display:none}
+body.typing .fabs{visibility:hidden}
 .item{padding:8px 10px;border-radius:8px;cursor:pointer}
 .item:hover,.item.on{background:#3a2a18}
 .item small{display:block;color:var(--muted)}
@@ -48,12 +50,13 @@ button.me{background:#3aa0ff;color:#fff}
   <div id="map"></div>
   <div class="bar">
     <div class="row">
-      <input id="q" type="search" placeholder="Search vendor to add…"/>
+      <input id="q" type="search" placeholder="Search vendor to add…" autocomplete="off" autocapitalize="off" spellcheck="false" list="qnames"/>
       <button id="pins">Pins</button>
       <button id="export">Export</button>
     </div>
     <div id="status"></div>
     <div class="list" id="list"></div>
+    <datalist id="qnames"></datalist>
   </div>
   <div class="fabs">
     <button class="fab" id="locate" title="My location">◎</button>
@@ -127,8 +130,19 @@ function openApp(){
     if(!loadFixes()[selected.name]) upsert(selected, e.latlng.lat, e.latlng.lng);
   });
   Promise.all(['vendors-0','vendors-1','vendors-2','vendors-3','vendors-4','vendors-5','vendors-6','vendors-7'].map(f=>fetch(f+'.json').then(r=>r.json())))
-    .then(chunks=>{ VENDORS=chunks.flat(); drawAll(); renderList(); updateStatus(); });
-  document.getElementById('q').oninput=()=>{ showPinned=false; renderList(); };
+    .then(chunks=>{ VENDORS=chunks.flat(); document.getElementById('qnames').innerHTML=VENDORS.map(v=>`<option value="${v.name.replace(/\"/g,'')}"></option>`).join(''); drawAll(); renderList(); updateStatus(); });
+  const qEl=document.getElementById('q');
+  qEl.oninput=()=>{ showPinned=false; document.body.classList.add('typing'); renderList(); };
+  qEl.onfocus=()=>document.body.classList.add('typing');
+  qEl.onblur=()=>setTimeout(()=>document.body.classList.remove('typing'),200);
+  function fitList(){
+    const vv=window.visualViewport;
+    if(!vv) return;
+    const top=document.querySelector('.bar').getBoundingClientRect().top;
+    const room=vv.height-top-70;
+    document.getElementById('list').style.maxHeight=Math.max(120,Math.min(room,320))+'px';
+  }
+  if(window.visualViewport){ visualViewport.addEventListener('resize',fitList); visualViewport.addEventListener('scroll',fitList); }
   document.getElementById('pins').onclick=()=>{ showPinned=true; document.getElementById('q').value=''; renderList(); };
   document.getElementById('export').onclick=()=>{
     const data=JSON.stringify(loadFixes(),null,2);
@@ -210,7 +224,13 @@ function renderList(){
     rows=Object.values(fixes);
     if(!rows.length && !q){ document.getElementById('list').innerHTML='Search vendor → Pin here.'; return; }
   } else {
-    rows=VENDORS.filter(v=>(v.name+' '+v.loc).toLowerCase().includes(q)).slice(0,40);
+    rows=VENDORS.filter(v=>(v.name+' '+v.loc).toLowerCase().includes(q))
+      .sort((a,b)=>{
+        const an=a.name.toLowerCase(), bn=b.name.toLowerCase();
+        const sa=an===q?0:an.startsWith(q)?1:an.includes(q)?2:3;
+        const sb=bn===q?0:bn.startsWith(q)?1:bn.includes(q)?2:3;
+        return sa-sb||an.localeCompare(bn);
+      }).slice(0,40);
   }
   document.getElementById('list').innerHTML=rows.map(v=>{
     const f=fixes[v.name];
