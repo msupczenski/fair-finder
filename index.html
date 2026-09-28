@@ -37,16 +37,25 @@ html,body{margin:0;height:100%;height:100dvh;width:100%;font-family:-apple-syste
 .fab{width:46px;height:46px;border-radius:50%;font-size:18px;box-shadow:0 6px 16px rgba(0,0,0,.4)}
 .fab.me{background:var(--me);color:#fff}
 .leaflet-control-attribution{font-size:9px}
+.suggest{display:none;max-height:min(42vh,320px);overflow:auto;background:rgba(20,15,10,.96);border-radius:14px;padding:6px;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+body.typing .suggest{display:block}
+body.typing .sheet,body.typing .fabs{visibility:hidden;pointer-events:none}
+.sug{padding:10px 12px;border-radius:10px}
+.sug b{display:block;font-size:15px}
+.sug small{color:var(--muted)}
+.sug:active{background:#3a2a18}
 </style>
 </head>
 <body>
 <div id="map"></div>
 <div class="top">
   <div class="search">
-    <input id="q" type="search" placeholder="Search funnel cake, 7th Street…" enterkeyhint="search"/>
+    <input id="q" type="search" placeholder="Search funnel cake, 7th Street…" enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false" list="qnames"/>
     <button id="go">Find</button>
   </div>
   <div class="chips" id="chips"></div>
+  <div class="suggest" id="suggest"></div>
+  <datalist id="qnames"></datalist>
 </div>
 <div class="fabs">
   <button class="fab me" id="locate">◎</button>
@@ -60,7 +69,7 @@ html,body{margin:0;height:100%;height:100dvh;width:100%;font-family:-apple-syste
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-const VER='v28';
+const VER='v29';
 let FIXES={};
 const FAIR=[40.9954,-76.4676];
 const map=L.map('map',{zoomControl:false,maxZoom:19,minZoom:15}).setView(FAIR,17);
@@ -166,6 +175,16 @@ function rawPos(v){
 function posOf(v){ const f=FIXES[v.name]; if(f&&f.lat) return [f.lat,f.lng]; return rawPos(v); }
 let meMarker=null,meAcc=null,watchId=null,follow=false,filterCat='all',query='';
 const DATA={vendors:[],landmarks:[]};
+function score(v){
+  const q=query;
+  const name=(v.name||'').toLowerCase();
+  const loc=(v.loc||'').toLowerCase();
+  if(name===q) return 0;
+  if(name.startsWith(q)) return 1;
+  if(name.includes(q)) return 2;
+  if(loc.startsWith(q)) return 3;
+  return 4;
+}
 function matches(v){
   if(filterCat!=='all' && !(v.cats||[]).includes(filterCat)) return false;
   if(!query) return true;
@@ -179,12 +198,28 @@ function addVendor(v){
 function renderVendors(){
   layers.clearLayers();
   const searching=!!(query||filterCat!=='all');
-  const hits=DATA.vendors.filter(matches);
+  const hits=DATA.vendors.filter(matches).sort((a,b)=>score(a)-score(b)||a.name.localeCompare(b.name));
   if(searching) hits.slice(0,250).forEach(addVendor);
   const sheet=document.getElementById('sheet');
   if(searching) sheet.classList.remove('min');
   const list=searching?hits:[];
   document.getElementById('status').innerHTML=`<span>${searching?hits.length+' matches':DATA.vendors.length+' vendors'}</span><span>${VER}</span>`;
+  const sug=document.getElementById('suggest');
+  if(query){
+    sug.innerHTML=hits.slice(0,20).map(v=>`<div class="sug" data-name="${v.name.replace(/"/g,'')}">
+      <b>${v.name}</b><small>${v.loc||''}</small></div>`).join('')||'<div class="sug">No matches</div>';
+    sug.querySelectorAll('.sug').forEach(el=>{
+      el.onclick=()=>{
+        const v=DATA.vendors.find(x=>x.name===el.dataset.name);
+        if(!v) return;
+        document.getElementById('q').value=v.name; query=v.name.toLowerCase();
+        document.body.classList.remove('typing');
+        renderVendors();
+        const pp=posOf(v); map.setView(pp,19); addVendor(v);
+        L.popup().setLatLng(pp).setContent(`<b>${v.name}</b><br>${v.loc}`).openOn(map);
+      };
+    });
+  } else sug.innerHTML='';
   const el=document.getElementById('results');
   el.innerHTML=list.slice(0,40).map(v=>`
     <div class="card">
@@ -214,8 +249,15 @@ const satBtn=document.createElement('button');
 satBtn.textContent='Satellite';
 satBtn.onclick=()=>{ usingSat=!usingSat; if(usingSat){map.removeLayer(streets);sat.addTo(map);satBtn.classList.add('on');} else {map.removeLayer(sat);streets.addTo(map);satBtn.classList.remove('on');} };
 chips.appendChild(satBtn);
-document.getElementById('q').addEventListener('input',e=>{query=e.target.value.trim().toLowerCase();renderVendors();});
-document.getElementById('go').onclick=()=>{query=document.getElementById('q').value.trim().toLowerCase();renderVendors();};
+const qEl=document.getElementById('q');
+qEl.addEventListener('input',e=>{query=e.target.value.trim().toLowerCase();document.body.classList.add('typing');renderVendors();});
+qEl.addEventListener('focus',()=>{document.body.classList.add('typing');renderVendors();});
+qEl.addEventListener('blur',()=>{ setTimeout(()=>document.body.classList.remove('typing'),200); });
+document.getElementById('go').onclick=()=>{query=qEl.value.trim().toLowerCase();document.body.classList.remove('typing');renderVendors();};
+function fillNames(){
+  const dl=document.getElementById('qnames');
+  dl.innerHTML=DATA.vendors.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(v=>`<option value="${v.name.replace(/"/g,'')}"></option>`).join('');
+}
 function placeMe(lat,lng,acc){
   if(!meMarker){
     meMarker=L.circleMarker([lat,lng],{radius:8,color:'#fff',weight:2,fillColor:'#3aa0ff',fillOpacity:1}).addTo(map);
@@ -244,7 +286,7 @@ Promise.all([
 ]).then(([landmarks,fixes,...chunks])=>{
   FIXES=Object.assign({},fixes||{});
   try{ Object.assign(FIXES, JSON.parse(localStorage.getItem('fairVendorFixes')||'{}')); }catch(e){}
-  DATA.landmarks=landmarks; DATA.vendors=chunks.flat(); render();
+  DATA.landmarks=landmarks; DATA.vendors=chunks.flat(); fillNames(); render();
 }).catch(err=>{ document.getElementById('status').textContent='Failed to load'; console.error(err); });
 </script>
 </body>
