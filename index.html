@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"/>
+<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate"/>
+<meta http-equiv="Pragma" content="no-cache"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
@@ -61,6 +63,7 @@ body.typing .sheet,body.typing .fabs{visibility:hidden;pointer-events:none}
   <button class="fab me" id="locate">◎</button>
   <button class="fab" id="follow">➤</button>
   <button class="fab" id="sat2">sat</button>
+  <button class="fab" id="reload" title="Refresh">↻</button>
 </div>
 <div class="sheet min" id="sheet">
   <div class="handle" id="handle"></div>
@@ -69,7 +72,11 @@ body.typing .sheet,body.typing .fabs{visibility:hidden;pointer-events:none}
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-const VER='v29';
+const VER='v30';
+const BUST=Date.now();
+function loadJSON(url){
+  return fetch(url+(url.includes('?')?'&':'?')+'v='+BUST,{cache:'no-store'}).then(r=>r.json());
+}
 let FIXES={};
 const FAIR=[40.9954,-76.4676];
 const map=L.map('map',{zoomControl:false,maxZoom:19,minZoom:15}).setView(FAIR,17);
@@ -203,7 +210,8 @@ function renderVendors(){
   const sheet=document.getElementById('sheet');
   if(searching) sheet.classList.remove('min');
   const list=searching?hits:[];
-  document.getElementById('status').innerHTML=`<span>${searching?hits.length+' matches':DATA.vendors.length+' vendors'}</span><span>${VER}</span>`;
+  const pinned=Object.keys(FIXES).length;
+  document.getElementById('status').innerHTML=`<span>${searching?hits.length+' matches':DATA.vendors.length+' vendors'}${pinned?' · '+pinned+' pinned':''}</span><span>${VER}</span>`;
   const sug=document.getElementById('suggest');
   if(query){
     sug.innerHTML=hits.slice(0,20).map(v=>`<div class="sug" data-name="${v.name.replace(/"/g,'')}">
@@ -258,6 +266,10 @@ function fillNames(){
   const dl=document.getElementById('qnames');
   dl.innerHTML=DATA.vendors.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(v=>`<option value="${v.name.replace(/"/g,'')}"></option>`).join('');
 }
+function mergeFixes(fixes){
+  FIXES=Object.assign({},fixes||{});
+  try{ Object.assign(FIXES, JSON.parse(localStorage.getItem('fairVendorFixes')||'{}')); }catch(e){}
+}
 function placeMe(lat,lng,acc){
   if(!meMarker){
     meMarker=L.circleMarker([lat,lng],{radius:8,color:'#fff',weight:2,fillColor:'#3aa0ff',fillOpacity:1}).addTo(map);
@@ -275,19 +287,26 @@ document.getElementById('follow').onclick=()=>{
   else if(watchId){ navigator.geolocation.clearWatch(watchId); watchId=null; }
 };
 document.getElementById('sat2').onclick=()=>satBtn.click();
+document.getElementById('reload').onclick=()=>{ window.location.replace(location.pathname+'?v='+Date.now()); };
 document.getElementById('handle').onclick=()=>{ document.getElementById('sheet').classList.toggle('min'); setTimeout(()=>map.invalidateSize(),200); };
 document.getElementById('status').onclick=()=>document.getElementById('handle').click();
 setTimeout(()=>map.invalidateSize(),300);
 map.on('zoomend',()=>{ if(map.getZoom()>19) map.setZoom(19); });
-Promise.all([
-  fetch('landmarks.json').then(r=>r.json()),
-  fetch('vendor-fixes.json').then(r=>r.json()).catch(()=>({})),
-  ...['vendors-0.json','vendors-1.json','vendors-2.json','vendors-3.json','vendors-4.json','vendors-5.json','vendors-6.json','vendors-7.json'].map(f=>fetch(f).then(r=>r.json()))
-]).then(([landmarks,fixes,...chunks])=>{
-  FIXES=Object.assign({},fixes||{});
-  try{ Object.assign(FIXES, JSON.parse(localStorage.getItem('fairVendorFixes')||'{}')); }catch(e){}
-  DATA.landmarks=landmarks; DATA.vendors=chunks.flat(); fillNames(); render();
-}).catch(err=>{ document.getElementById('status').textContent='Failed to load'; console.error(err); });
+function boot(){
+  Promise.all([
+    loadJSON('landmarks.json'),
+    loadJSON('vendor-fixes.json').catch(()=>({})),
+    ...['vendors-0.json','vendors-1.json','vendors-2.json','vendors-3.json','vendors-4.json','vendors-5.json','vendors-6.json','vendors-7.json'].map(loadJSON)
+  ]).then(([landmarks,fixes,...chunks])=>{
+    mergeFixes(fixes);
+    DATA.landmarks=landmarks; DATA.vendors=chunks.flat(); fillNames(); render();
+  }).catch(err=>{ document.getElementById('status').textContent='Failed to load'; console.error(err); });
+}
+boot();
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden) return;
+  loadJSON('vendor-fixes.json').then(fixes=>{ mergeFixes(fixes); render(); }).catch(()=>{});
+});
 </script>
 </body>
 </html>
