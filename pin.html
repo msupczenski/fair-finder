@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"/>
+<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate"/>
+<meta http-equiv="Pragma" content="no-cache"/>
+<meta name="robots" content="noindex,nofollow"/>
+<title>Fair Finder — Pin v30</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+:root{--bg:#140f0a;--card:#23190f;--ink:#f4e6c8;--muted:#c4ad86;--accent:#e8a317}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;height:100dvh;font-family:-apple-system,sans-serif;background:var(--bg);color:var(--ink);overflow:hidden}
+#gate{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:999;background:var(--bg)}
+#gate form{display:flex;flex-direction:column;gap:10px;width:min(320px,90vw)}
+input,button{border:0;border-radius:12px;padding:11px;font-size:16px}
+input{background:var(--card);color:var(--ink)}
+button{background:var(--accent);color:#2a1a00;font-weight:700}
+button.ghost{background:#3a2a18;color:var(--ink)}
+button.danger{background:#b33;color:#fff}
+button.me{background:#3aa0ff;color:#fff}
+#map{position:fixed;inset:0}
+.bar{position:absolute;left:10px;right:10px;top:calc(8px + env(safe-area-inset-top));z-index:500;display:flex;flex-direction:column;gap:6px}
+.row{display:flex;gap:6px}
+.row input{flex:1}
+.list{display:none;max-height:min(38vh,280px);overflow:auto;background:rgba(20,15,10,.94);border-radius:12px;padding:6px}
+.list.show{display:block}
+body.typing .sheet{display:none}
+body.typing .fabs{visibility:hidden}
+.item{padding:8px 10px;border-radius:8px;cursor:pointer}
+.item:hover,.item.on{background:#3a2a18}
+.item small{display:block;color:var(--muted)}
+.fabs{position:absolute;right:12px;bottom:calc(120px + env(safe-area-inset-bottom));z-index:500;display:flex;flex-direction:column;gap:8px}
+.fab{width:48px;height:48px;border-radius:50%;padding:0;background:#3aa0ff;color:#fff}
+#status{font-size:12px;color:var(--muted);padding:0 4px}
+.dot-label{background:#e8a317;color:#2a1a00;border:0;border-radius:8px;padding:2px 6px;font-weight:700;font-size:11px;box-shadow:0 2px 6px rgba(0,0,0,.4);white-space:nowrap}
+.sheet{position:absolute;left:0;right:0;bottom:0;z-index:600;background:var(--bg);padding:10px 12px calc(12px + env(safe-area-inset-bottom));display:none;box-shadow:0 -8px 24px rgba(0,0,0,.4)}
+.sheet.on{display:block}
+.sheet h3{margin:0 0 4px;font-size:16px}
+.sheet p{margin:0 0 10px;color:var(--muted);font-size:13px}
+</style>
+</head>
+<body>
+<div id="gate">
+  <form id="unlock">
+    <div>Pin mode v30</div>
+    <input id="pw" type="password" placeholder="password" autocomplete="current-password"/>
+    <button type="submit">Open</button>
+  </form>
+</div>
+<div id="app" style="display:none">
+  <div id="map"></div>
+  <div class="bar">
+    <div class="row">
+      <input id="q" type="search" placeholder="Search vendor to add…" autocomplete="off" autocapitalize="off" spellcheck="false"/>
+      <button id="export">Export</button>
+    </div>
+    <div id="status"></div>
+    <div class="list" id="list"></div>
+  </div>
+  <div class="fabs">
+    <button class="fab" id="locate" title="My location">◎</button>
+  </div>
+  <div class="sheet" id="sheet">
+    <h3 id="sheetName">Vendor</h3>
+    <p id="sheetLoc"></p>
+    <div class="row">
+      <button class="me" id="pinHere">Pin here</button>
+      <button id="editBtn">Edit</button>
+      <button class="danger" id="delBtn">Delete</button>
+      <button class="ghost" id="closeBtn">Close</button>
+    </div>
+  </div>
+</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const PASS='bloom26';
+const KEY='fairVendorFixes';
+const FAIR=[40.9954,-76.4676];
+const BUST=Date.now();
+function getJSON(u){ return fetch(u+'?v='+BUST,{cache:'no-store'}).then(r=>r.json()); }
+if(sessionStorage.getItem('fairCal')==='1') openApp();
+document.getElementById('unlock').onsubmit=e=>{
+  e.preventDefault();
+  if(document.getElementById('pw').value===PASS){ sessionStorage.setItem('fairCal','1'); openApp(); }
+  else alert('Nope');
+};
+function loadFixes(){ try{return JSON.parse(localStorage.getItem(KEY)||'{}');}catch(e){return{};} }
+function saveFixes(o){ localStorage.setItem(KEY, JSON.stringify(o)); }
+let VENDORS=[], selected=null, map, markers={}, moving=false;
+let meMarker=null, meAcc=null, myPos=null;
+function iconFor(on){
+  const c=on?'#3aa0ff':'#e8a317';
+  return L.divIcon({className:'',html:`<div style="width:14px;height:14px;background:${c};border:2px solid #fff;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,.5)"></div>`,iconSize:[14,14],iconAnchor:[7,7]});
+}
+function placeMe(lat,lng,acc){
+  myPos=[lat,lng];
+  if(!meMarker){
+    meMarker=L.circleMarker([lat,lng],{radius:8,color:'#fff',weight:2,fillColor:'#3aa0ff',fillOpacity:1}).addTo(map);
+    meAcc=L.circle([lat,lng],{radius:acc||20,color:'#3aa0ff',weight:1,fillOpacity:.12}).addTo(map);
+  } else {
+    meMarker.setLatLng([lat,lng]);
+    meAcc.setLatLng([lat,lng]);
+    if(acc) meAcc.setRadius(acc);
+  }
+}
+function startGps(center){
+  if(!navigator.geolocation){alert('Turn on Location');return;}
+  navigator.geolocation.getCurrentPosition(p=>{
+    placeMe(p.coords.latitude,p.coords.longitude,p.coords.accuracy);
+    if(center) map.setView([p.coords.latitude,p.coords.longitude],18);
+  },err=>alert(err.message),{enableHighAccuracy:true,timeout:12000});
+  navigator.geolocation.watchPosition(p=>placeMe(p.coords.latitude,p.coords.longitude,p.coords.accuracy),()=>{},{enableHighAccuracy:true,maximumAge:1000});
+}
+function pinHere(){
+  if(!selected){alert('Search a vendor first');return;}
+  if(myPos){ upsert(selected,myPos[0],myPos[1]); return; }
+  navigator.geolocation.getCurrentPosition(p=>{
+    placeMe(p.coords.latitude,p.coords.longitude,p.coords.accuracy);
+    upsert(selected,p.coords.latitude,p.coords.longitude);
+  },err=>alert(err.message),{enableHighAccuracy:true,timeout:12000});
+}
+function clearSearch(){
+  const q=document.getElementById('q');
+  q.value='';
+  q.blur();
+  document.body.classList.remove('typing');
+  hideList();
+}
+function hideList(){
+  const el=document.getElementById('list');
+  el.classList.remove('show');
+  el.innerHTML='';
+}
+function openApp(){
+  document.getElementById('gate').style.display='none';
+  document.getElementById('app').style.display='block';
+  map=L.map('map',{maxZoom:19}).setView(FAIR,17);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map);
+  startGps(true);
+  map.on('click',e=>{
+    if(moving && selected){ upsert(selected, e.latlng.lat, e.latlng.lng); moving=false; updateStatus(); return; }
+    if(!selected){ document.getElementById('status').textContent='Search and tap a vendor first.'; return; }
+    if(!loadFixes()[selected.name]) upsert(selected, e.latlng.lat, e.latlng.lng);
+  });
+  Promise.all([
+    getJSON('vendor-fixes.json').catch(()=>({})),
+    ...['vendors-0','vendors-1','vendors-2','vendors-3','vendors-4','vendors-5','vendors-6','vendors-7'].map(f=>getJSON(f+'.json'))
+  ]).then(([remote,...chunks])=>{
+    const merged=Object.assign({}, remote||{}, loadFixes());
+    saveFixes(merged);
+    VENDORS=chunks.flat();
+    drawAll(); hideList(); updateStatus();
+  });
+  const qEl=document.getElementById('q');
+  qEl.oninput=()=>{ document.body.classList.add('typing'); renderList(); };
+  qEl.onfocus=()=>document.body.classList.add('typing');
+  qEl.onblur=()=>setTimeout(()=>document.body.classList.remove('typing'),200);
+  document.getElementById('export').onclick=()=>{
+    const data=JSON.stringify(loadFixes(),null,2);
+    try{navigator.clipboard.writeText(data);}catch(e){}
+    const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([data],{type:'application/json'})); a.download='vendor-fixes.json'; a.click();
+  };
+  document.getElementById('locate').onclick=()=>startGps(true);
+  document.getElementById('pinHere').onclick=pinHere;
+  document.getElementById('editBtn').onclick=()=>{
+    if(!selected) return;
+    moving=true;
+    const m=markers[selected.name];
+    if(m) m.dragging.enable();
+    document.getElementById('status').textContent='Move mode: drag the blue pin or tap a new spot.';
+  };
+  document.getElementById('delBtn').onclick=()=>{
+    if(!selected) return;
+    if(!confirm('Delete pin for '+selected.name+'?')) return;
+    const fixes=loadFixes(); delete fixes[selected.name]; saveFixes(fixes);
+    if(markers[selected.name]){ map.removeLayer(markers[selected.name]); delete markers[selected.name]; }
+    selected=null; moving=false; hideSheet(); hideList(); updateStatus();
+  };
+  document.getElementById('closeBtn').onclick=()=>{ selected=null; moving=false; hideSheet(); hideList(); drawAll(); updateStatus(); };
+}
+function showSheet(v){
+  document.getElementById('sheetName').textContent=v.name;
+  document.getElementById('sheetLoc').textContent=v.loc||'';
+  document.getElementById('sheet').classList.add('on');
+}
+function hideSheet(){ document.getElementById('sheet').classList.remove('on'); }
+function selectVendor(v){
+  selected=v; moving=false; showSheet(v);
+  const f=loadFixes()[v.name];
+  if(f) map.setView([f.lat,f.lng],19);
+  else if(myPos) map.setView(myPos,18);
+  drawAll(); hideList(); updateStatus();
+}
+function upsert(v,lat,lng){
+  lat=+lat.toFixed(6); lng=+lng.toFixed(6);
+  const fixes=loadFixes();
+  fixes[v.name]={name:v.name,loc:v.loc,lat,lng};
+  saveFixes(fixes);
+  putMarker(fixes[v.name], true);
+  showSheet(v);
+  clearSearch();
+  updateStatus();
+}
+function putMarker(f, focus){
+  if(markers[f.name]){
+    markers[f.name].setLatLng([f.lat,f.lng]);
+    markers[f.name].setIcon(iconFor(selected&&selected.name===f.name));
+    markers[f.name].dragging[selected&&selected.name===f.name&&moving?'enable':'disable']();
+  } else {
+    const m=L.marker([f.lat,f.lng],{draggable:false,icon:iconFor(false)}).addTo(map);
+    m.bindTooltip(f.name,{permanent:true,direction:'top',offset:[0,-8],className:'dot-label'});
+    m.on('click',L.DomEvent.stopPropagation);
+    m.on('click',()=>selectVendor(VENDORS.find(x=>x.name===f.name)||f));
+    m.on('dragend',()=>{ const p=m.getLatLng(); selected=VENDORS.find(x=>x.name===f.name)||f; upsert(selected,p.lat,p.lng); moving=false; });
+    markers[f.name]=m;
+  }
+  if(focus) map.panTo([f.lat,f.lng]);
+}
+function drawAll(){
+  const fixes=loadFixes();
+  Object.values(fixes).forEach(f=>putMarker(f,false));
+  Object.keys(markers).forEach(name=>{
+    if(!fixes[name]){ map.removeLayer(markers[name]); delete markers[name]; }
+    else {
+      markers[name].setIcon(iconFor(selected&&selected.name===name));
+      markers[name].dragging[selected&&selected.name===name&&moving?'enable':'disable']();
+    }
+  });
+}
+function renderList(){
+  const q=document.getElementById('q').value.trim().toLowerCase();
+  const el=document.getElementById('list');
+  if(!q){ hideList(); return; }
+  const fixes=loadFixes();
+  const rows=VENDORS.filter(v=>(v.name+' '+v.loc).toLowerCase().includes(q))
+    .sort((a,b)=>{
+      const an=a.name.toLowerCase(), bn=b.name.toLowerCase();
+      const sa=an===q?0:an.startsWith(q)?1:an.includes(q)?2:3;
+      const sb=bn===q?0:bn.startsWith(q)?1:bn.includes(q)?2:3;
+      return sa-sb||an.localeCompare(bn);
+    }).slice(0,20);
+  el.classList.add('show');
+  el.innerHTML=rows.map(v=>{
+    const f=fixes[v.name];
+    return `<div class="item" data-name="${String(v.name).replace(/"/g,'')}"><b>${v.name}</b><small>${v.loc||''}${f?' · pinned':''}</small></div>`;
+  }).join('')||'<div class="item">No matches</div>';
+  el.querySelectorAll('.item').forEach(node=>{
+    node.onclick=()=>{
+      const v=VENDORS.find(x=>x.name===node.dataset.name);
+      if(!v) return;
+      selectVendor(v);
+      clearSearch();
+    };
+  });
+}
+function updateStatus(){
+  const n=Object.keys(loadFixes()).length;
+  document.getElementById('status').textContent=(selected?('Selected: '+selected.name+' · tap the pin to edit. '):'Search a vendor. ')+n+' pins. v30';
+}
+</script>
+</body>
+</html>
