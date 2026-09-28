@@ -1,1 +1,26 @@
-{}
+{
+  "Wild N Wonderful Whitetails": {
+    "name": "Wild N Wonderful Whitetails",
+    "loc": "F Ave W:308",
+    "lat": 40.993644,
+    "lng": -76.466466
+  },
+  "Folk's Fried Vegetables (Linda Cain-Folk)": {
+    "name": "Folk's Fried Vegetables (Linda Cain-Folk)",
+    "loc": "E Ave West Ext. / Spot AA",
+    "lat": 40.993679,
+    "lng": -76.467074
+  },
+  "Geraldo's Whistle Stop Pizza": {
+    "name": "Geraldo's Whistle Stop Pizza",
+    "loc": "10th Street: 117 & 4th Street: 28",
+    "lat": 40.994053,
+    "lng": -76.467416
+  },
+  "J & D Kettle Corn": {
+    "name": "J & D Kettle Corn",
+    "loc": "Free Stage Blvd: 14/16",
+    "lat": 40.99427,
+    "lng": -76.467206
+  }
+}
