@@ -72,7 +72,7 @@ body.typing .sheet,body.typing .fabs{visibility:hidden;pointer-events:none}
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-const VER='v38';
+const VER='v39';
 const BUST=Date.now();
 function loadJSON(url){
   return fetch(url+(url.includes('?')?'&':'?')+'v='+BUST,{cache:'no-store'}).then(r=>r.json());
@@ -178,17 +178,29 @@ function rawPos(v){
   return [lat,lng];
 }
 function firstClause(loc){ return String(loc||'').split(';')[0]; }
+const ROAD_PATS=[
+  [/\bn\.?\s*ext\.?\s*mach(?:inery)?\.?\s*row\b|\bmach(?:inery)?\.?\s*row\s*north\s*ext\b\.?/, m=>'mach-ne'],
+  [/\bmach(?:inery)?\.?\s*row\b/, m=>'mach'],
+  [/\bn\.?\s*ext\.?\s*(\d+)\s*(?:st|nd|rd|th)?\s*st(?:reet)?\b\.?/, m=>'nx-'+(+m[1])],
+  [/(\d+)\s*(?:st|nd|rd|th)?\s*st(?:reet)?\b\.?\s*(?:north\s*ext\b\.?|n\b)/, m=>'nx-'+(+m[1])],
+  [/(\d+)\s*(?:st|nd|rd|th)?\s*st(?:reet)?\b\.?(?:\s*s\b)?/, m=>'st-'+(+m[1])],
+  [/\bherb\s*row\b/, m=>'herb'],
+  [/\bfree\s*stage(?:\s*(?:blvd|boulevard))?\b\.?/, m=>'free'],
+  [/\bveteran'?s?\s*way\b/, m=>'vets'],
+  [/\b([a-f])(1?)\s+ave(?:nue)?\b\.?(?:\s*(west|east|w|e)\b)?/, m=>'ave-'+m[1]+m[2]+(m[3]?m[3][0]:'')],
+  [/\bave(?:nue)?\s+([a-f])(1?)\b/, m=>'ave-'+m[1]+m[2]]
+];
 function parseAddr(loc, firstOnly){
   const s=(firstOnly?firstClause(loc):String(loc||'')).toLowerCase();
-  if(/multiple locations/.test(s)) return {key:null,booth:null};
-  const streets=[...s.matchAll(/(\d+)\s*(?:st|nd|rd|th)?\s*(?:st(?:reet)?)/g)].map(m=>+m[1]);
-  const next=/n ext|north ext/.test(s);
-  const booths=[...s.matchAll(/:\s*[a-z]*\s*(\d+)/g)].map(m=>+m[1]);
-  const ave=(s.match(/\b([a-f])1?\s*ave\s*([we])?/)||[]);
-  let key=null;
-  if(streets.length) key=(next?'nx-':'st-')+streets[0];
-  else if(ave[1]) key='ave-'+ave[1]+(ave[2]||'');
-  return {key, booth:booths[0]||null};
+  if(/mul\w*ple\s+loc/.test(s)) return {key:null,booth:null};
+  let best=null;
+  ROAD_PATS.forEach(([re,fn])=>{
+    const m=s.match(re);
+    if(m && (!best || m.index<best.i || (m.index===best.i && m[0].length>best.len))) best={i:m.index,len:m[0].length,key:fn(m)};
+  });
+  if(!best) return {key:null,booth:null};
+  const bm=s.slice(best.i+best.len).match(/^\s*(?:ext\b\.?)?[\s.]*:?\s*(?:spot\s*)?(\d+)/);
+  return {key:best.key, booth:bm?+bm[1]:null};
 }
 function streetSamples(){
   const g={};
@@ -246,6 +258,11 @@ function anchorFor(key){
   return [];
 }
 function alongStreet(v){
+  const e=roadEstimate(v);
+  if(e) return e.pt;
+  return alongStreetGrid(v);
+}
+function alongStreetGrid(v){
   const a=parseAddr(v.loc,true);
   if(!a.key || a.booth==null) return null;
   const samples=anchorFor(a.key);
@@ -269,8 +286,136 @@ function posOf(v){
 }
 // OSM way geometry for the grounds roads (Overpass, 2026-09-28), simplified to ~1 m. Static: no runtime API calls.
 const OSM_ROADS={'st-2':[[[40.99781,-76.462998],[40.996706,-76.461908],[40.996439,-76.461858]]],'st-3':[[[40.996239,-76.466563],[40.99599,-76.466373],[40.995299,-76.465785],[40.994619,-76.465283]]],'st-4':[[[40.996085,-76.466895],[40.995139,-76.466114]]],'st-5':[[[40.995954,-76.467173],[40.994303,-76.465899]]],'st-6':[[[40.995602,-76.467229],[40.994879,-76.466662]]],'st-7':[[[40.995483,-76.467484],[40.994529,-76.466711],[40.994113,-76.466321]]],'st-8':[[[40.99542,-76.467622],[40.994708,-76.46706]]],'st-9':[[[40.995341,-76.467799],[40.994792,-76.467354],[40.994623,-76.467236]]],'st-10':[[[40.995076,-76.468382],[40.99436,-76.467741],[40.994317,-76.467673],[40.994135,-76.467492],[40.993732,-76.46712]]],'st-11':[[[40.994834,-76.468885],[40.993464,-76.467667]]],'st-12':[[[40.994334,-76.468891],[40.993424,-76.468095]]],'nx-11':[[[40.99614,-76.470265],[40.995371,-76.469634],[40.994914,-76.469198]]],'nx-12':[[[40.994817,-76.469394],[40.996063,-76.470431]]],'ave-a':[[[40.994738,-76.469547],[40.995229,-76.46851],[40.995493,-76.468231],[40.998058,-76.462437],[40.998182,-76.46194]]],'ave-b':[[[40.99599,-76.466373],[40.994595,-76.469411]],[[40.997586,-76.462787],[40.998049,-76.461746]]],'ave-c':[[[40.995618,-76.466059],[40.995235,-76.466943],[40.995112,-76.46718],[40.994488,-76.468566],[40.994242,-76.469076]]],'ave-d':[[[40.995299,-76.465785],[40.994879,-76.466662],[40.994708,-76.46706],[40.994394,-76.467668],[40.993888,-76.468764]],[[40.996706,-76.461908],[40.997178,-76.461072]]],'ave-e':[[[40.995308,-76.46366],[40.994619,-76.465283],[40.994303,-76.465899],[40.993464,-76.467667]]],'ave-f':[[[40.993262,-76.467568],[40.993424,-76.466849],[40.995055,-76.463739],[40.995308,-76.46366]]],'ave-b1':[[[40.994921,-76.468252],[40.994693,-76.468765]]],'ave-c1':[[[40.994934,-76.467045],[40.994547,-76.467912],[40.9943,-76.468407]]],herb:[[[40.995204,-76.469956],[40.995721,-76.468915]]],mach:[[[40.994738,-76.469547],[40.994242,-76.469076],[40.993338,-76.468264]]],'mach-ne':[[[40.994738,-76.469547],[40.995204,-76.469956],[40.995793,-76.470438]]],free:[[[40.994529,-76.466711],[40.994135,-76.467492]]],vets:[[[40.994642,-76.466171],[40.994429,-76.466611]]]};
+function roadBase(key){ return String(key||'').replace(/^(ave-[a-f]1?)[we]$/,'$1'); }
+const ROAD_KX=111320*Math.cos(FAIR[0]*Math.PI/180), ROAD_GEO={};
+function rxy(p){ return [(p[1]-FAIR[1])*ROAD_KX,(p[0]-FAIR[0])*111320]; }
+function rll(x,y){ return [FAIR[0]+y/111320, FAIR[1]+x/ROAD_KX]; }
+function roadGeo(base){
+  if(base in ROAD_GEO) return ROAD_GEO[base];
+  const raw=OSM_ROADS[base];
+  if(!raw) return ROAD_GEO[base]=null;
+  let segs=raw.map(g=>g.map(rxy));
+  const lg=segs.slice().sort((a,b)=>b.length-a.length)[0];
+  let ux=lg[lg.length-1][0]-lg[0][0], uy=lg[lg.length-1][1]-lg[0][1];
+  if(Math.abs(uy)>Math.abs(ux) ? uy>0 : ux<0){ ux=-ux; uy=-uy; }
+  const dot=p=>p[0]*ux+p[1]*uy;
+  segs=segs.map(g=>dot(g[g.length-1])<dot(g[0])?g.slice().reverse():g).sort((a,b)=>dot(a[0])-dot(b[0]));
+  const pieces=[]; let L=0;
+  segs.forEach(g=>{ for(let i=1;i<g.length;i++){ const a=g[i-1], b=g[i], len=Math.hypot(b[0]-a[0],b[1]-a[1]); if(len<0.01) continue; pieces.push({a,b,s0:L,len}); L+=len; } });
+  return ROAD_GEO[base]={pieces,L,ns:Math.abs(uy)>Math.abs(ux)};
+}
+function roadProject(g,lat,lng){
+  const p=rxy([lat,lng]); let best=null;
+  g.pieces.forEach(q=>{
+    const dx=q.b[0]-q.a[0], dy=q.b[1]-q.a[1];
+    const t=Math.max(0,Math.min(1,((p[0]-q.a[0])*dx+(p[1]-q.a[1])*dy)/(q.len*q.len)));
+    const d=Math.hypot(p[0]-q.a[0]-t*dx,p[1]-q.a[1]-t*dy);
+    if(!best || d<best.d) best={d,s:q.s0+t*q.len};
+  });
+  return best;
+}
+function roadAt(g,s){
+  s=Math.max(0,Math.min(g.L,s));
+  for(const q of g.pieces) if(s<=q.s0+q.len+1e-9){ const t=(s-q.s0)/q.len; return rll(q.a[0]+t*(q.b[0]-q.a[0]),q.a[1]+t*(q.b[1]-q.a[1])); }
+  const q=g.pieces[g.pieces.length-1]; return rll(q.b[0],q.b[1]);
+}
+function roadDir(key){
+  // +1: booth numbers grow with s (s runs south on N-S roads, east on E-W roads)
+  if(/^st-/.test(key)) return 1;
+  if(/^nx-|^mach/.test(key)) return -1;
+  if(/^ave-.*w$/.test(key)) return -1;
+  return 1;
+}
+function roadOrigin(key,g){
+  // s where booth 0 sits, when no walked anchors exist
+  if(/^st-/.test(key)) return 0;
+  if(/^ave-[a-f][we]$/.test(key)){
+    const t=roadGeo('st-3'); if(!t) return null;
+    const A=t.pieces[0].a, B=t.pieces[t.pieces.length-1].b;
+    const nx=B[1]-A[1], ny=A[0]-B[0], side=p=>(p[0]-A[0])*nx+(p[1]-A[1])*ny;
+    let best=null;
+    for(const q of g.pieces){
+      const da=side(q.a), db=side(q.b);
+      if(da===0) return q.s0;
+      if(da*db<0) return q.s0+q.len*da/(da-db);
+      [[da,q.s0],[db,q.s0+q.len]].forEach(([d,sv])=>{ d=Math.abs(d); if(!best || d<best.d) best={d,s:sv}; });
+    }
+    return best.s;
+  }
+  return null;
+}
+let ROAD_CACHE={fx:null,nv:-1,m:{}};
+function roadAnchors(key,g,skip){
+  const out=[];
+  Object.values(FIXES).forEach(f=>{
+    if(!f || f.name===skip) return;
+    const lat=+f.lat, lng=+f.lng; if(!isFinite(lat) || !isFinite(lng) || !lat) return;
+    const a=parseAddr(f.loc||'',true);
+    if(a.key!==key || a.booth==null) return;
+    const pr=roadProject(g,lat,lng);
+    if(pr && pr.d<=12) out.push({b:a.booth,s:pr.s,name:f.name});
+  });
+  return out.sort((x,y)=>x.b-y.b);
+}
+function roadSlope(an){
+  if(an.length<2 || an[an.length-1].b-an[0].b<20) return null;
+  let mb=0,ms=0; an.forEach(x=>{mb+=x.b;ms+=x.s;}); mb/=an.length; ms/=an.length;
+  let sbb=0,sbs=0; an.forEach(x=>{sbb+=(x.b-mb)*(x.b-mb); sbs+=(x.b-mb)*(x.s-ms);});
+  return sbb?sbs/sbb:null;
+}
+function roadKind(k){ return /^ave-/.test(k)?'ave':/^nx-/.test(k)?'nx':/^st-/.test(k)?'st':'other'; }
+function roadMpb(kind){
+  if(ROAD_CACHE.fx!==FIXES || ROAD_CACHE.nv!==DATA.vendors.length) ROAD_CACHE={fx:FIXES,nv:DATA.vendors.length,m:{}};
+  const ck='mpb-'+kind; if(ck in ROAD_CACHE.m) return ROAD_CACHE.m[ck];
+  const keys=new Set();
+  Object.values(FIXES).forEach(f=>{ const k=f && parseAddr(f.loc||'',true).key; if(k) keys.add(k); });
+  const v=[];
+  keys.forEach(k=>{
+    if(roadKind(k)!==kind) return;
+    const g=roadGeo(roadBase(k)); if(!g) return;
+    const c=roadSlope(roadAnchors(k,g));
+    if(c!=null && Math.abs(c)>=0.3 && Math.abs(c)<=6) v.push(Math.abs(c));
+  });
+  v.sort((a,b)=>a-b);
+  return ROAD_CACHE.m[ck]=v.length?(v.length%2?v[v.length>>1]:(v[v.length/2-1]+v[v.length/2])/2):(kind==='nx'?roadMpb('st')*1.8:1.6);
+}
+function roadBoothRange(key){
+  const ck='rng-'+key; if(ck in ROAD_CACHE.m) return ROAD_CACHE.m[ck];
+  let lo=Infinity,hi=-Infinity;
+  DATA.vendors.forEach(v=>{ const a=parseAddr(v.loc,true); if(a.key===key && a.booth!=null){ lo=Math.min(lo,a.booth); hi=Math.max(hi,a.booth); } });
+  return ROAD_CACHE.m[ck]=isFinite(lo)?[lo,hi]:null;
+}
+function roadEstimate(v,skip){
+  const a=parseAddr(v.loc,true);
+  if(!a.key) return null;
+  const g=roadGeo(roadBase(a.key));
+  if(!g || !g.L) return null;
+  roadMpb('st');
+  const an=roadAnchors(a.key,g,skip), dir=roadDir(a.key), b=a.booth;
+  let slope=roadSlope(an);
+  if(slope==null || Math.abs(slope)<0.3 || Math.abs(slope)>6) slope=dir*roadMpb(roadKind(a.key));
+  let s, how;
+  if(b==null){
+    s=an.length?an.reduce((t,x)=>t+x.s,0)/an.length:g.L/2; how='no-booth';
+  } else if(an.length){
+    let lo=null,hi=null;
+    an.forEach(x=>{ if(x.b<=b) lo=x; if(x.b>=b && !hi) hi=x; });
+    if(lo && hi && hi.b!==lo.b){ s=lo.s+(b-lo.b)*(hi.s-lo.s)/(hi.b-lo.b); how='interp'; }
+    else { const n=lo||hi; s=n.s+(b-n.b)*slope; how=an.length>1?'extrap':'1-anchor'; }
+  } else {
+    const o=roadOrigin(a.key,g);
+    if(o!=null){ s=o+dir*b*roadMpb(roadKind(a.key)); how='origin'; }
+    else {
+      const r=roadBoothRange(a.key);
+      const t=(r && r[1]>r[0])?(b-r[0])/(r[1]-r[0]):0.5;
+      s=(dir>0?t:1-t)*g.L; how='spread';
+    }
+  }
+  const clamped=s<-1 || s>g.L+1;
+  return {pt:roadAt(g,s),s,L:g.L,clamped,how,key:a.key,anchors:an.length};
+}
 function roadPoints(key){
-  const segs=OSM_ROADS[String(key||'').replace(/^(ave-[a-f])[we]$/,'$1')];
+  const segs=OSM_ROADS[roadBase(key)];
   if(segs && segs.length) return segs.length===1?segs[0]:segs;
   const samples=anchorFor(key);
   if(!samples.length) return [];
