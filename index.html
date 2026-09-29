@@ -23,6 +23,12 @@ html,body{margin:0;height:100%;height:100dvh;width:100%;font-family:-apple-syste
 .search{display:flex;gap:8px}
 .search input{flex:1;border:0;border-radius:14px;padding:12px 14px;font-size:16px;background:var(--card);color:var(--ink);box-shadow:0 8px 24px rgba(0,0,0,.35)}
 .search button{border:0;border-radius:14px;padding:0 14px;background:var(--accent);color:#2a1a00;font-weight:700}
+.qwrap{position:relative;flex:1;display:flex;min-width:0}
+.qwrap input{width:100%;min-width:0;padding-right:46px}
+.qwrap input::-webkit-search-cancel-button{-webkit-appearance:none;appearance:none;display:none}
+.search .qclear{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:38px;height:38px;padding:0;border:0;border-radius:50%;background:transparent;color:var(--muted);font-size:24px;font-weight:400;line-height:38px;text-align:center;display:none;cursor:pointer;touch-action:manipulation}
+.search .qclear:active{background:#3a2a18;color:var(--accent)}
+.qwrap.has .qclear{display:block}
 .chips{display:flex;gap:6px;overflow:auto}
 .chips button{flex:0 0 auto;border:0;border-radius:999px;padding:7px 12px;background:#3a2a18;color:var(--ink);font-size:13px}
 .chips button.on{background:var(--accent);color:#2a1a00}
@@ -52,7 +58,7 @@ body.typing .sheet,body.typing .fabs{visibility:hidden;pointer-events:none}
 <div id="map"></div>
 <div class="top">
   <div class="search">
-    <input id="q" type="search" placeholder="Search funnel cake, 7th Street…" enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false" list="qnames"/>
+    <span class="qwrap" id="qwrap"><input id="q" type="search" placeholder="Search funnel cake, 7th Street…" enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false" list="qnames"/><button type="button" class="qclear" id="qclear" tabindex="-1" aria-label="Clear search">×</button></span>
     <button id="go">Find</button>
   </div>
   <div class="chips" id="chips"></div>
@@ -72,7 +78,7 @@ body.typing .sheet,body.typing .fabs{visibility:hidden;pointer-events:none}
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-const VER='v39';
+const VER='v40';
 const BUST=Date.now();
 function loadJSON(url){
   return fetch(url+(url.includes('?')?'&':'?')+'v='+BUST,{cache:'no-store'}).then(r=>r.json());
@@ -459,7 +465,9 @@ function addVendor(v){
   const color=COLORS[(v.cats||[])[0]]||COLORS.other;
   L.marker(posOf(v),{icon:icon(color)}).addTo(layers).bindPopup(`<b>${v.name}</b><br>${v.loc}<br><small>${v.desc||''}</small>`);
 }
+function syncClear(){ document.getElementById('qwrap').classList.toggle('has',!!document.getElementById('q').value); }
 function renderVendors(){
+  syncClear();
   layers.clearLayers();
   const searching=!!(query||filterCat!=='all');
   const hits=DATA.vendors.filter(matches).sort((a,b)=>score(a)-score(b)||a.name.localeCompare(b.name));
@@ -525,6 +533,22 @@ const qEl=document.getElementById('q');
 qEl.addEventListener('input',e=>{query=e.target.value.trim().toLowerCase();document.body.classList.add('typing');renderVendors();});
 qEl.addEventListener('focus',()=>{document.body.classList.add('typing');renderVendors();});
 qEl.addEventListener('blur',()=>{ setTimeout(()=>document.body.classList.remove('typing'),200); });
+function clearSearch(){
+  qEl.value=''; query='';
+  map.closePopup();
+  renderVendors();
+  document.getElementById('sheet').classList.add('min');
+  setTimeout(()=>map.invalidateSize(),200);
+  qEl.focus();
+  if(document.activeElement===qEl) document.body.classList.add('typing');
+}
+const qClr=document.getElementById('qclear');
+let qClrAt=0;
+['pointerdown','mousedown','touchstart'].forEach(t=>qClr.addEventListener(t,e=>{
+  e.preventDefault();
+  if(Date.now()-qClrAt>400){ qClrAt=Date.now(); clearSearch(); }
+},{passive:false}));
+qClr.addEventListener('click',e=>{ e.preventDefault(); if(Date.now()-qClrAt>400){ qClrAt=Date.now(); clearSearch(); } });
 document.getElementById('go').onclick=()=>{query=qEl.value.trim().toLowerCase();document.body.classList.remove('typing');renderVendors();};
 function fillNames(){
   const dl=document.getElementById('qnames');
