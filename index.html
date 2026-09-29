@@ -116,7 +116,6 @@ body.typing .sheet,body.typing .fabs{visibility:hidden;pointer-events:none}
 </div>
 <div class="fabs">
   <button class="fab" id="follow">➤</button>
-  <button class="fab" id="sat2">sat</button>
   <button class="fab" id="reload" title="Refresh">↻</button>
 </div>
 <div class="sheet" id="sheet">
@@ -132,7 +131,7 @@ body.typing .sheet,body.typing .fabs{visibility:hidden;pointer-events:none}
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-const VER='v45';
+const VER='v46';
 const BUST=Date.now();
 function loadJSON(url){
   return fetch(url+(url.includes('?')?'&':'?')+'v='+BUST,{cache:'no-store'}).then(r=>r.json());
@@ -140,12 +139,10 @@ function loadJSON(url){
 let FIXES={};
 const FAIR=[40.9954,-76.4676];
 const map=L.map('map',{zoomControl:false,maxZoom:19,minZoom:15,maxBoundsViscosity:1.0}).setView(FAIR,17);
-const streets=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map);
-const sat=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Powered by <a href="https://www.esri.com" target="_blank" rel="noopener">Esri</a> · Source: Esri, Vantor, Earthstar Geographics, and the GIS User Community'});
-// v45: OSM credit always shown (street tiles, and the OSM road/venue data drawn over satellite); Esri credit added with the sat layer
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map);
+// OSM credit (tiles + the OSM road/venue data drawn on the map); mirrored into the sheet header at full
 map.attributionControl.setPrefix(false); map.attributionControl.setPosition('bottomleft'); function syncCred(){ const c=document.getElementById('lcred'); if(c) c.innerHTML='Map '+map.attributionControl.getContainer().innerHTML; }
 map.attributionControl.addAttribution('© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors');
-let usingSat=false;
 const layers=L.layerGroup().addTo(map);
 const roadLayer=L.layerGroup().addTo(map);
 function icon(color){
@@ -829,11 +826,7 @@ chipData.forEach(([id,label])=>{
   b.onclick=()=>{if(!evRouting()) clearEv();filterCat=id;[...chips.children].forEach(x=>x.classList.remove('on'));b.classList.add('on');VIEW=(id!=='all'||query)?'search':(VIEW==='search'?'':VIEW);renderVendors();setSheet(VIEW==='search'?'half':'peek');};
   chips.appendChild(b);
 });
-const satBtn=document.createElement('button');
-satBtn.textContent='Satellite';
-satBtn.onclick=()=>{ usingSat=!usingSat; if(usingSat){map.removeLayer(streets);sat.addTo(map);satBtn.classList.add('on');} else {map.removeLayer(sat);streets.addTo(map);satBtn.classList.remove('on');} syncCred(); };
 syncCred();
-chips.appendChild(satBtn);
 const qEl=document.getElementById('q');
 qEl.addEventListener('input',e=>{if(!evRouting()) clearEv();query=e.target.value.trim().toLowerCase();document.body.classList.add('typing');renderVendors();});
 qEl.addEventListener('focus',()=>{document.body.classList.add('typing');renderVendors();});
@@ -888,7 +881,6 @@ document.getElementById('follow').onclick=()=>{
   if(follow){ if(!navigator.geolocation){ follow=false; document.getElementById('follow').style.background=''; return; } if(watchId) navigator.geolocation.clearWatch(watchId); let first=true; watchId=navigator.geolocation.watchPosition(p=>{ LASTFIX={ll:[p.coords.latitude,p.coords.longitude],acc:p.coords.accuracy,t:Date.now()}; placeMe(p.coords.latitude,p.coords.longitude,p.coords.accuracy); if(first && AWAY) map.setView(FAIR_CORE.getCenter(),0); first=false; },()=>{},{enableHighAccuracy:true,maximumAge:1000}); }
   else if(watchId){ navigator.geolocation.clearWatch(watchId); watchId=null; }
 };
-document.getElementById('sat2').onclick=()=>satBtn.click();
 document.getElementById('reload').onclick=()=>{ window.location.replace(location.pathname+'?v='+Date.now()); };
 setTimeout(()=>map.invalidateSize(),300);
 map.on('zoomend',()=>{ if(map.getZoom()>19) map.setZoom(19); });
