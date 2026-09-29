@@ -13,12 +13,7 @@
 <title>Fair Finder</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <style>
-:root { --bg:#140f0a; --card:#23190f; --ink:#f4e6c8; --muted:#c4ad86; --accent:#e8a317; --me:#3aa0ff; --chip:#3a2a18; }
-html[data-theme=light]{ --bg:#f4efe4; --card:#fffaf1; --ink:#2a1a00; --muted:#6a5433; --accent:#c4840c; --me:#1a7ad4; --chip:#e8dcc4; }
-html[data-theme=light] .suggest{background:rgba(244,239,228,.96)}
-html[data-theme=light] .sug:active{background:#e8dcc4}
-html[data-theme=dark] .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.85) contrast(1.05)}
-html[data-theme=dark].sat .leaflet-tile-pane{filter:none}
+:root { --bg:#140f0a; --card:#23190f; --ink:#f4e6c8; --muted:#c4ad86; --accent:#e8a317; --me:#3aa0ff; }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100%;height:100dvh;width:100%;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--ink);overflow:hidden}
 #map{position:fixed;inset:0;width:100%;height:100%;height:100dvh;z-index:0}
@@ -29,7 +24,7 @@ html,body{margin:0;height:100%;height:100dvh;width:100%;font-family:-apple-syste
 .search input{flex:1;border:0;border-radius:14px;padding:12px 14px;font-size:16px;background:var(--card);color:var(--ink);box-shadow:0 8px 24px rgba(0,0,0,.35)}
 .search button{border:0;border-radius:14px;padding:0 14px;background:var(--accent);color:#2a1a00;font-weight:700}
 .chips{display:flex;gap:6px;overflow:auto}
-.chips button{flex:0 0 auto;border:0;border-radius:999px;padding:7px 12px;background:var(--chip);color:var(--ink);font-size:13px}
+.chips button{flex:0 0 auto;border:0;border-radius:999px;padding:7px 12px;background:#3a2a18;color:var(--ink);font-size:13px}
 .chips button.on{background:var(--accent);color:#2a1a00}
 .sheet{position:absolute;left:0;right:0;bottom:0;z-index:500;background:var(--bg);padding:10px 12px calc(10px + env(safe-area-inset-bottom));max-height:34vh;display:flex;flex-direction:column;box-shadow:0 -8px 24px rgba(0,0,0,.35)}
 .handle{width:42px;height:5px;border-radius:99px;background:#6a5433;margin:0 auto 8px;cursor:pointer}
@@ -77,7 +72,7 @@ body.typing .sheet,body.typing .fabs{visibility:hidden;pointer-events:none}
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-const VER='v36';
+const VER='v33';
 const BUST=Date.now();
 function loadJSON(url){
   return fetch(url+(url.includes('?')?'&':'?')+'v='+BUST,{cache:'no-store'}).then(r=>r.json());
@@ -88,13 +83,7 @@ const map=L.map('map',{zoomControl:false,maxZoom:19,minZoom:15}).setView(FAIR,17
 L.control.zoom({position:'bottomleft'}).addTo(map);
 const streets=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OSM'}).addTo(map);
 const sat=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Esri'});
-let usingSat=false, darkMode=(localStorage.getItem('fairTheme')||'dark')!=='light';
-function applyTheme(){
-  document.documentElement.dataset.theme=darkMode?'dark':'light';
-  document.documentElement.classList.toggle('sat', usingSat);
-  document.querySelector('meta[name=theme-color]').content=darkMode?'#140f0a':'#f4efe4';
-}
-applyTheme();
+let usingSat=false;
 const layers=L.layerGroup().addTo(map);
 const roadLayer=L.layerGroup().addTo(map);
 function icon(color){
@@ -212,17 +201,66 @@ function streetSamples(){
   Object.values(g).forEach(arr=>arr.sort((x,y)=>x.booth-y.booth));
   return g;
 }
+function fitStep(arr){
+  if(!arr || arr.length<2) return null;
+  let sl=0,sn=0,n=0;
+  for(let i=0;i<arr.length;i++){
+    for(let j=i+1;j<arr.length;j++){
+      const db=arr[j].booth-arr[i].booth;
+      if(Math.abs(db)<5) continue;
+      sl+=(arr[j].lat-arr[i].lat)/db;
+      sn+=(arr[j].lng-arr[i].lng)/db;
+      n++;
+    }
+  }
+  return n?{dlat:sl/n,dlng:sn/n}:null;
+}
+function stepFor(key){
+  const g=streetSamples();
+  const mine=fitStep(g[key]);
+  if(mine) return mine;
+  if(String(key).startsWith('ave-') && /e$/.test(key)) return {dlat:0.000011,dlng:0.000022};
+  if(String(key).startsWith('ave-') && /w$/.test(key)) return {dlat:-0.000008,dlng:-0.000016};
+  if(String(key).startsWith('nx-')) return fitStep(g['nx-12']||g['nx-11']) || {dlat:0.000026,dlng:-0.000018};
+  const pooled=[].concat(g['st-3']||[], g['st-10']||[], g['st-11']||[], g['st-7']||[]);
+  return fitStep(pooled) || {dlat:-0.000015,dlng:0.000013};
+}
+function anchorFor(key){
+  const g=streetSamples();
+  if(g[key] && g[key].length) return g[key];
+  if(String(key).startsWith('st-')){
+    const n=+key.slice(3);
+    const ref=REFS.find(r=>r.st===n && r.ave==='b') || REFS.find(r=>r.st===n);
+    const lng=(ref && ref.lng) || ST_LNG[n] || FAIR[1];
+    const lat=(ref && ref.lat) || (AVE_LAT.b||FAIR[0]);
+    return [{booth:18,lat,lng}];
+  }
+  if(key==='ave-ee'){
+    const r=REFS.find(x=>x.id==='eave');
+    return r?[{booth:80,lat:r.lat,lng:r.lng}]:[];
+  }
+  if(key==='ave-ew'){
+    const r=REFS.find(x=>x.id==='free');
+    return r?[{booth:40,lat:r.lat,lng:r.lng}]:[];
+  }
+  return [];
+}
 function alongStreet(v){
   const a=parseAddr(v.loc,true);
   if(!a.key || a.booth==null) return null;
-  const samples=(streetSamples()[a.key]||[]);
-  if(samples.length<2) return null;
-  let lo=samples[0], hi=samples[samples.length-1];
-  for(const s of samples){ if(s.booth<=a.booth) lo=s; if(s.booth>=a.booth){ hi=s; break; } }
-  if(lo.booth===hi.booth) return [lo.lat,lo.lng];
-  const t=(a.booth-lo.booth)/(hi.booth-lo.booth);
-  const lat=lo.lat+t*(hi.lat-lo.lat), lng=lo.lng+t*(hi.lng-lo.lng);
-  return [Math.max(40.9934,Math.min(40.9980,lat)), Math.max(-76.4708,Math.min(-76.4620,lng))];
+  const samples=anchorFor(a.key);
+  if(!samples.length) return null;
+  if(samples.length>=2){
+    let lo=samples[0], hi=samples[samples.length-1];
+    for(const s of samples){ if(s.booth<=a.booth) lo=s; if(s.booth>=a.booth){ hi=s; break; } }
+    if(lo.booth!==hi.booth){
+      const t=(a.booth-lo.booth)/(hi.booth-lo.booth);
+      return [lo.lat+t*(hi.lat-lo.lat), lo.lng+t*(hi.lng-lo.lng)];
+    }
+  }
+  const s=samples[0];
+  const step=stepFor(a.key);
+  return [s.lat+(a.booth-s.booth)*step.dlat, s.lng+(a.booth-s.booth)*step.dlng];
 }
 function posOf(v){
   const f=FIXES[v.name];
@@ -230,19 +268,17 @@ function posOf(v){
   return alongStreet(v)||rawPos(v);
 }
 function roadPoints(key){
-  if(String(key).startsWith('st-')){
-    const n=+key.slice(3);
-    const lng=ST_LNG[n];
-    if(lng==null) return [];
-    return [[AVE_LAT.a||40.99574,lng],[AVE_LAT.f||40.99370,lng]];
+  const samples=anchorFor(key);
+  if(!samples.length) return [];
+  const step=stepFor(key);
+  let dlat=step.dlat, dlng=step.dlng;
+  if(samples.length>=2){
+    const a=samples[0], b=samples[samples.length-1];
+    const db=b.booth-a.booth;
+    if(Math.abs(db)>=5){ dlat=(b.lat-a.lat)/db; dlng=(b.lng-a.lng)/db; }
   }
-  if(String(key).startsWith('ave-')){
-    const letter=key.split('-')[1][0];
-    const lat=AVE_LAT[letter];
-    if(lat==null) return [];
-    return [[lat,ST_LNG[12]||-76.46925],[lat,ST_LNG[3]||-76.46637]];
-  }
-  return [];
+  const s=samples[0];
+  return [[s.lat+(1-s.booth)*dlat, s.lng+(1-s.booth)*dlng],[s.lat+(130-s.booth)*dlat, s.lng+(130-s.booth)*dlng]];
 }
 function highlightRoad(key){
   roadLayer.clearLayers();
@@ -334,19 +370,8 @@ chipData.forEach(([id,label])=>{
 });
 const satBtn=document.createElement('button');
 satBtn.textContent='Satellite';
-satBtn.onclick=()=>{ usingSat=!usingSat; if(usingSat){map.removeLayer(streets);sat.addTo(map);satBtn.classList.add('on');} else {map.removeLayer(sat);streets.addTo(map);satBtn.classList.remove('on');} applyTheme(); };
+satBtn.onclick=()=>{ usingSat=!usingSat; if(usingSat){map.removeLayer(streets);sat.addTo(map);satBtn.classList.add('on');} else {map.removeLayer(sat);streets.addTo(map);satBtn.classList.remove('on');} };
 chips.appendChild(satBtn);
-const themeBtn=document.createElement('button');
-themeBtn.textContent=darkMode?'Dark':'Light';
-if(darkMode) themeBtn.classList.add('on');
-themeBtn.onclick=()=>{
-  darkMode=!darkMode;
-  localStorage.setItem('fairTheme', darkMode?'dark':'light');
-  themeBtn.textContent=darkMode?'Dark':'Light';
-  themeBtn.classList.toggle('on',darkMode);
-  applyTheme();
-};
-chips.appendChild(themeBtn);
 const qEl=document.getElementById('q');
 qEl.addEventListener('input',e=>{query=e.target.value.trim().toLowerCase();document.body.classList.add('typing');renderVendors();});
 qEl.addEventListener('focus',()=>{document.body.classList.add('typing');renderVendors();});
