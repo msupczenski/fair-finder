@@ -72,7 +72,7 @@ body.typing .sheet,body.typing .fabs{visibility:hidden;pointer-events:none}
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-const VER='v30';
+const VER='v31';
 const BUST=Date.now();
 function loadJSON(url){
   return fetch(url+(url.includes('?')?'&':'?')+'v='+BUST,{cache:'no-store'}).then(r=>r.json());
@@ -115,7 +115,7 @@ function rebuildGrid(){
   Object.keys(AVE_LAT).forEach(k=>delete AVE_LAT[k]);
   const aveFrom={'s7a':'a','s7b':'b','s7c':'c','s7d':'d','eave':'e','fave':'f'};
   REFS.forEach(r=>{
-    if(r.st && String(r.id).startsWith('s') && r.id!=='s2a') ST_LNG[r.st]=r.lng;
+    if(r.st && String(r.id).startsWith('s') && r.id!=='s2a' && r.id!=='s11h') ST_LNG[r.st]=r.lng;
     if(aveFrom[r.id]) AVE_LAT[aveFrom[r.id]]=r.lat;
   });
   const known=Object.keys(ST_LNG).map(Number).sort((a,b)=>a-b);
@@ -179,7 +179,48 @@ function rawPos(v){
   if(loc.includes('cattle')||loc.includes('livestock')) { const r=R('fave'); if(r){lat=r.lat;lng=r.lng;} }
   return [lat,lng];
 }
-function posOf(v){ const f=FIXES[v.name]; if(f&&f.lat) return [f.lat,f.lng]; return rawPos(v); }
+function parseAddr(loc){
+  const s=(loc||'').toLowerCase();
+  if(/multiple locations/.test(s)) return {key:null,booth:null};
+  const streets=[...s.matchAll(/(\d+)\s*(?:st|nd|rd|th)?\s*(?:st(?:reet)?)/g)].map(m=>+m[1]);
+  const next=/n ext|north ext/.test(s);
+  const booths=[...s.matchAll(/:\s*[a-z]*\s*(\d+)/g)].map(m=>+m[1]);
+  const ave=(s.match(/\b([a-f])1?\s*ave\s*([we])?/)||[]);
+  let key=null;
+  if(streets.length===1) key=(next?'nx-':'st-')+streets[0];
+  else if(!streets.length && ave[1]) key='ave-'+ave[1]+(ave[2]||'');
+  return {key, booth:booths[0]||null};
+}
+function streetSamples(){
+  const g={};
+  Object.values(FIXES).forEach(f=>{
+    const a=parseAddr(f.loc);
+    if(!a.key || a.booth==null || !f.lat) return;
+    (g[a.key]=g[a.key]||[]).push({booth:a.booth,lat:f.lat,lng:f.lng});
+  });
+  Object.values(g).forEach(arr=>arr.sort((x,y)=>x.booth-y.booth));
+  return g;
+}
+function alongStreet(v){
+  const a=parseAddr(v.loc);
+  if(!a.key || a.booth==null) return null;
+  const samples=streetSamples()[a.key]||[];
+  if(!samples.length) return null;
+  if(samples.length===1){
+    const s=samples[0], db=a.booth-s.booth;
+    return [s.lat+db*-0.000016, s.lng+db*0.000015];
+  }
+  let lo=samples[0], hi=samples[samples.length-1];
+  for(const s of samples){ if(s.booth<=a.booth) lo=s; if(s.booth>=a.booth){ hi=s; break; } }
+  if(lo.booth===hi.booth) return [lo.lat,lo.lng];
+  const t=(a.booth-lo.booth)/(hi.booth-lo.booth);
+  return [lo.lat+t*(hi.lat-lo.lat), lo.lng+t*(hi.lng-lo.lng)];
+}
+function posOf(v){
+  const f=FIXES[v.name];
+  if(f&&f.lat) return [f.lat,f.lng];
+  return alongStreet(v)||rawPos(v);
+}
 let meMarker=null,meAcc=null,watchId=null,follow=false,filterCat='all',query='';
 const DATA={vendors:[],landmarks:[]};
 function score(v){
