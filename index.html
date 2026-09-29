@@ -547,6 +547,8 @@ function rtGate(){
   const ll=[+g.lat,+g.lng], pr=rtProject(ll);
   return pr && pr.d<=150 ? ll : null;
 }
+// Leaflet ignores a new zoom while a zoom animation is still running, so wait for it to finish
+function rtView(fn){ const go=()=>{ if(map._animatingZoom) map.once('zoomend',()=>setTimeout(go,0)); else fn(); }; go(); }
 function rtSrc(){ return RT.fix && !AWAY ? RT.fix.ll : RT.fallback; }
 function rtUpdate(force){
   if(!RT.on) return;
@@ -556,7 +558,7 @@ function rtUpdate(force){
     if(dp<=15 || (RT.arrived && dp<=25)){ RT.arrived=true; RT.rem=dp; rtDraw(); rtStatus(); return; }
   }
   RT.arrived=false;
-  if(!src){ RT.path=null; RT.rem=null; rtDraw(); rtStatus(); if(!RT.fitted){ RT.fitted=1; map.setView(RT.pin,18); } return; }
+  if(!src){ RT.path=null; RT.rem=null; rtDraw(); rtStatus(); if(!RT.fitted){ RT.fitted=1; rtView(()=>map.setView(RT.pin,18)); } return; }
   let rem=null;
   if(RT.path && !force){
     const q=rtAlong(src), off=q.d>25 && q.d>RT.path.S.d+15;
@@ -572,7 +574,7 @@ function rtUpdate(force){
   if(RT.fitted<(RT.fix?2:1)){
     RT.fitted=RT.fix?2:1;
     const b=L.latLngBounds([RT.pin,src].concat(RT.path?RT.path.pts:[]));
-    map.fitBounds(b,{paddingTopLeft:[30,110],paddingBottomRight:[70,130],maxZoom:19});
+    rtView(()=>map.fitBounds(b,{paddingTopLeft:[30,110],paddingBottomRight:[70,130],maxZoom:19}));
   }
 }
 function rtDraw(){
