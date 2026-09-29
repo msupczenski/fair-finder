@@ -72,7 +72,7 @@ body.typing .sheet,body.typing .fabs{visibility:hidden;pointer-events:none}
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-const VER='v33';
+const VER='v37';
 const BUST=Date.now();
 function loadJSON(url){
   return fetch(url+(url.includes('?')?'&':'?')+'v='+BUST,{cache:'no-store'}).then(r=>r.json());
@@ -267,7 +267,35 @@ function posOf(v){
   if(f&&f.lat) return [f.lat,f.lng];
   return alongStreet(v)||rawPos(v);
 }
+function gridEnd(table,order){
+  for(const k of order){ if(table[k]!=null) return table[k]; }
+  return null;
+}
+function gridRoadPoints(key){
+  const k=String(key||'');
+  let m=k.match(/^st-(\d+)$/);
+  if(m){
+    const n=+m[1];
+    if(n<3 || n>12 || ST_LNG[n]==null) return null;
+    const north=gridEnd(AVE_LAT,['a','b','c','d','e','f']);
+    const south=gridEnd(AVE_LAT,['f','e','d','c','b','a']);
+    if(north==null || south==null) return null;
+    return [[north,ST_LNG[n]],[south,ST_LNG[n]]];
+  }
+  m=k.match(/^ave-([a-f])[we]?$/);
+  if(m){
+    const lat=AVE_LAT[m[1]];
+    if(lat==null) return null;
+    const west=gridEnd(ST_LNG,[12,11,10,9,8,7,6,5,4,3]);
+    const east=gridEnd(ST_LNG,[3,4,5,6,7,8,9,10,11,12]);
+    if(west==null || east==null) return null;
+    return [[lat,west],[lat,east]];
+  }
+  return null;
+}
 function roadPoints(key){
+  const grid=gridRoadPoints(key);
+  if(grid) return grid;
   const samples=anchorFor(key);
   if(!samples.length) return [];
   const step=stepFor(key);
