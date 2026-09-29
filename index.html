@@ -69,6 +69,7 @@ body.routing #pline{display:none}
 .msg{font-size:13px;color:var(--muted);padding:6px 2px;line-height:1.4}
 .sug .tag{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.03em;border-radius:6px;padding:1px 5px;margin-right:6px;background:#3a2a18;color:#b89bff;vertical-align:1px}
 .sug.near b{color:var(--accent)}
+.sug.all b{color:var(--accent);font-size:13px}
 .fabs{position:absolute;right:12px;bottom:calc(var(--fabv,56px) + 12px);z-index:500;display:flex;flex-direction:column;gap:8px;transition:bottom .22s ease}
 body.sheetup .fabs{visibility:hidden;pointer-events:none}
 #rtxt{flex:1;min-width:0;font-size:14px;font-weight:600;line-height:1.25}
@@ -107,12 +108,11 @@ body.typing .sheet,body.typing .fabs{visibility:hidden;pointer-events:none}
 <div id="map"></div>
 <div class="top">
   <div class="search">
-    <span class="qwrap" id="qwrap"><input id="q" type="search" placeholder="Search funnel cake, 7th Street…" enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false" list="qnames"/><button type="button" class="qclear" id="qclear" tabindex="-1" aria-label="Clear search">×</button></span>
+    <span class="qwrap" id="qwrap"><input id="q" type="search" placeholder="Search funnel cake, 7th Street…" enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false"/><button type="button" class="qclear" id="qclear" tabindex="-1" aria-label="Clear search">×</button></span>
     <button id="go">Find</button>
   </div>
   <div class="chips" id="chips"></div>
   <div class="suggest" id="suggest"></div>
-  <datalist id="qnames"></datalist>
 </div>
 <div class="fabs">
   <button class="fab" id="follow">➤</button>
@@ -131,7 +131,7 @@ body.typing .sheet,body.typing .fabs{visibility:hidden;pointer-events:none}
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-const VER='v46';
+const VER='v47';
 const BUST=Date.now();
 function loadJSON(url){
   return fetch(url+(url.includes('?')?'&':'?')+'v='+BUST,{cache:'no-store'}).then(r=>r.json());
@@ -733,21 +733,51 @@ function setAway(v){
 }
 applyFairBounds();
 map.on('resize',fairMinZoom);
+// ---- v47 search: case/accent/punctuation-insensitive substring match on name + loc + desc (+kw), loose plural/singular, all words must match ----
+function qnorm(s){ return (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/['\u2019`]/g,'').replace(/[^a-z0-9]+/g,' ').trim(); }
+function wVariants(w){
+  const o=[w];
+  if(/ies$/.test(w)&&w.length>4){ o.push(w.slice(0,-3)+'y'); if(w.length>=7) o.push(w.slice(0,-2)); }      // fries->fry, pierogies->pierogi
+  else if(/(ch|sh|ss|x|z|o)es$/.test(w)) o.push(w.slice(0,-2));                                           // sandwiches->sandwich, potatoes->potato
+  else if(/s$/.test(w)&&!/ss$/.test(w)&&w.length>3) o.push(w.slice(0,-1));                                // lemonades->lemonade
+  if(/[^aeiou]y$/.test(w)&&w.length>2) o.push(w.slice(0,-1)+'ies');                                       // fry->fries
+  return o;
+}
+function qWords(q){ return qnorm(q).split(' ').filter(Boolean).map(w=>({w,vs:wVariants(w)})); }
+function wIn(t,x){ return x.vs.some(v=>t.includes(v)); }
+function wStart(t,x){ return x.vs.some(v=>t.includes(' '+v)); }
+const QN=new WeakMap();
+function vNorm(v){ const k=v.name+'\u0001'+v.loc+'\u0001'+v.desc+'\u0001'+(v.kw||''); let c=QN.get(v); if(!c||c.k!==k){ c={k,n:' '+qnorm(v.name)+' ',b:' '+qnorm(v.name+' '+v.loc+' '+v.desc+' '+(v.kw||''))+' '}; QN.set(v,c); } return c; }
+let QWS=[], QRAW=null;
+function curWords(){ if(QRAW!==query){ QRAW=query; QWS=qWords(query); } return QWS; }
+// tier: 0 exact name, 1 every word at a word start in the name, 2 every word somewhere in the name, 3 match via desc/loc/kw
 function score(v){
-  const q=query;
-  const name=(v.name||'').toLowerCase();
-  const loc=(v.loc||'').toLowerCase();
-  if(name===q) return 0;
-  if(name.startsWith(q)) return 1;
-  if(name.includes(q)) return 2;
-  if(loc.startsWith(q)) return 3;
-  return 4;
+  const ws=curWords(), c=vNorm(v);
+  if(c.n.trim()===ws.map(x=>x.w).join(' ')) return 0;
+  if(ws.every(x=>wStart(c.n,x))) return 1;
+  if(ws.every(x=>wIn(c.n,x))) return 2;
+  return 3;
 }
 function matches(v){
   if(filterCat!=='all' && !(v.cats||[]).includes(filterCat)) return false;
   if(!query) return true;
-  const blob=(v.name+' '+v.loc+' '+v.desc+' '+(v.kw||'')).toLowerCase();
-  return query.split(/\s+/).every(w=>blob.includes(w));
+  const ws=curWords(); if(!ws.length) return false;
+  const c=vNorm(v); return ws.every(x=>wIn(c.b,x));
+}
+// walking distance (fair roads) from the last GPS fix, only if we already have one and are on the grounds; no GPS prompt from search
+let SDIST={t:-1,m:null};
+function searchDist(){
+  const f=LASTFIX; if(!f || AWAY || Date.now()-f.t>10*60000 || isAway(f.ll)) return null;
+  if(SDIST.t===f.t) return SDIST.m;
+  const m=new Map(), g=RT.g, S=g?rtProject(f.ll):null;
+  if(!S){ DATA.vendors.forEach(v=>m.set(v,hav(f.ll,posOf(v)))); }
+  else {
+    const n=g.nodes.length, dist=new Array(n).fill(Infinity), done=new Array(n).fill(false), es=g.edges[S.ei];
+    dist[es.a]=S.t*es.w; dist[es.b]=Math.min(dist[es.b],(1-S.t)*es.w);
+    for(;;){ let u=-1,bd=Infinity; for(let i=0;i<n;i++) if(!done[i]&&dist[i]<bd){bd=dist[i];u=i;} if(u<0) break; done[u]=true; g.adj[u].forEach(([v,w])=>{ if(dist[u]+w<dist[v]) dist[v]=dist[u]+w; }); }
+    DATA.vendors.forEach(v=>{ const T=rtProject(posOf(v)); let d=Infinity; if(T){ const et=g.edges[T.ei]; d=Math.min(dist[et.a]+T.t*et.w, dist[et.b]+(1-T.t)*et.w); if(T.ei===S.ei) d=Math.min(d,Math.abs(S.t-T.t)*es.w); d+=S.d+T.d; } m.set(v,d); });
+  }
+  SDIST={t:f.t,m}; return m;
 }
 function addVendor(v){
   const color=COLORS[(v.cats||[])[0]]||COLORS.other;
@@ -758,7 +788,8 @@ function renderVendors(){
   syncClear();
   layers.clearLayers();
   const searching=!!(query||filterCat!=='all');
-  const hits=DATA.vendors.filter(matches).sort((a,b)=>score(a)-score(b)||a.name.localeCompare(b.name));
+  const DM=query?searchDist():null, SCM=new Map();
+  const hits=DATA.vendors.filter(matches).map(v=>({v,sc:query?score(v):0,d:DM?DM.get(v):0})).sort((a,b)=>a.sc-b.sc||a.d-b.d||a.v.name.localeCompare(b.v.name)).map(x=>(SCM.set(x.v,x.sc),x.v));
   let roadKey=null;
   if(query){
     const qaddr=parseAddr(query,true);
@@ -773,11 +804,14 @@ function renderVendors(){
   const sug=document.getElementById('suggest');
   const nearRow=(!query || /^n(e(a(r( (m(e)?)?)?)?)?)?$/.test(query))?'<div class="sug near" data-near="1"><b>\ud83d\udccd Near me \u2014 closest food</b><small>Food stands by walking distance from where you are</small></div>':'';
   if(query){
-    const evs=evSearch(query), vs=hits.slice(0,20).map(v=>({k:'v',sc:score(v),v}));
-    const mix=vs.concat(evs.map(x=>({k:'e',sc:x.sc+0.5,x}))).sort((a,b)=>a.sc-b.sc).slice(0,24);
+    // every name match, then desc matches up to ~25 vendor rows, then events; a 'show all' row if anything is hidden
+    const evs=evSearch(query), nNm=hits.filter(v=>SCM.get(v)<3).length, nV=Math.max(nNm,Math.min(hits.length,25));
+    const mix=hits.slice(0,nV).map(v=>({k:'v',v})).concat(evs.map(x=>({k:'e',x})));
+    const more=hits.length>nV?`<div class="sug all" data-all="1"><b>Show all ${hits.length} matches ›</b></div>`:'';
     sug.innerHTML=nearRow+(mix.map(m=>m.k==='v'?`<div class="sug" data-name="${m.v.name.replace(/"/g,'')}">
-      <b>${m.v.name}</b><small>${m.v.loc||''}</small></div>`:`<div class="sug" data-evi="${m.x.i}"><b><span class="tag">EVENT</span>${esc(m.x.e.name)}</b><small>${evWhen(m.x.e)} \u00b7 ${esc(m.x.e.venue)}</small></div>`).join('')||(nearRow?'':'<div class="sug">No matches</div>'));
+      <b>${m.v.name}</b><small>${m.v.loc||''}</small></div>`:`<div class="sug" data-evi="${m.x.i}"><b><span class="tag">EVENT</span>${esc(m.x.e.name)}</b><small>${evWhen(m.x.e)} \u00b7 ${esc(m.x.e.venue)}</small></div>`).join('')+more||(nearRow?'':'<div class="sug">No matches</div>'));
     sug.querySelectorAll('.sug').forEach(el=>{
+      if(el.dataset.all){ el.onclick=()=>doFind(); return; }
       if(el.dataset.near){ el.onclick=()=>{ qEl.value=''; query=''; qEl.blur(); document.body.classList.remove('typing'); renderVendors(); showNear(); }; return; }
       if(el.dataset.evi!=null){ el.onclick=()=>{ document.body.classList.remove('typing'); qEl.blur(); openEvent(+el.dataset.evi,true); }; return; }
       el.onclick=()=>{
@@ -800,7 +834,7 @@ function renderVendors(){
   if(VIEW!=='search') return;
   document.getElementById('stitle').textContent=hits.length+' match'+(hits.length===1?'':'es');
   const el=document.getElementById('results');
-  el.innerHTML=list.slice(0,40).map(v=>`
+  el.innerHTML=list.map(v=>`
     <div class="card">
       <h3>${v.name}</h3>
       <p>${v.loc}</p>
@@ -853,10 +887,6 @@ document.getElementById('rend').onclick=e=>{ e.stopPropagation(); rtEnd(); };
 function doFind(){ if(!evRouting()) clearEv(); query=qEl.value.trim().toLowerCase(); qEl.blur(); document.body.classList.remove('typing'); VIEW=(query||filterCat!=='all')?'search':''; renderVendors(); setSheet(VIEW?'half':'peek'); }
 document.getElementById('go').onclick=doFind;
 qEl.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); doFind(); } });
-function fillNames(){
-  const dl=document.getElementById('qnames');
-  dl.innerHTML=DATA.vendors.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(v=>`<option value="${v.name.replace(/"/g,'')}"></option>`).join('');
-}
 function mergeFixes(fixes){
   FIXES=Object.assign({},fixes||{});
   try{ Object.assign(FIXES, JSON.parse(localStorage.getItem('fairVendorFixes')||'{}')); }catch(e){}
@@ -915,11 +945,12 @@ function evWhen(e){ return (e.date===nyNow().date?'Today':fmtD(e.date,true))+' '
 function evMinFromNow(e,n){ return dayDiff(n.date,e.date)*1440+hm(e.start)-n.min; }
 function evSearch(q){
   if(!q || q.length<2) return [];
-  const ws=q.split(/\s+/).filter(Boolean), n=nyNow(), out=[];
+  const ws=qWords(q), n=nyNow(), out=[], qn=ws.map(x=>x.w).join(' ');
+  if(!ws.length) return [];
   DATA.events.forEach((e,i)=>{
-    const nm=e.name.toLowerCase(), blob=(e.name+' '+e.venue+' '+(e.category||'')).toLowerCase();
-    if(!ws.every(w=>blob.includes(w))) return;
-    out.push({i,e,sc:nm===q?0:nm.startsWith(q)?1:nm.includes(q)?2:3,dt:evMinFromNow(e,n)});
+    const nm=' '+qnorm(e.name)+' ', blob=' '+qnorm(e.name+' '+e.venue+' '+(e.category||''))+' ';
+    if(!ws.every(x=>wIn(blob,x))) return;
+    out.push({i,e,sc:nm.trim()===qn?0:ws.every(x=>wStart(nm,x))?1:ws.every(x=>wIn(nm,x))?2:3,dt:evMinFromNow(e,n)});
   });
   // upcoming first (soonest), then already-started ones (most recent first); one row per event name+venue
   out.sort((a,b)=>a.sc-b.sc||((a.dt<0)-(b.dt<0))||(a.dt<0?b.dt-a.dt:a.dt-b.dt));
@@ -1098,7 +1129,7 @@ function boot(){
     ...['vendors-0.json','vendors-1.json','vendors-2.json','vendors-3.json','vendors-4.json','vendors-5.json','vendors-6.json','vendors-7.json'].map(loadJSON)
   ]).then(([landmarks,fixes,events,hours,...chunks])=>{
     mergeFixes(fixes);
-    DATA.landmarks=landmarks; DATA.vendors=chunks.flat(); DATA.events=(events&&events.events)||[]; DATA.hours=hours; applyFairBounds(); fillNames(); render(); updPeek();
+    DATA.landmarks=landmarks; DATA.vendors=chunks.flat(); DATA.events=(events&&events.events)||[]; DATA.hours=hours; applyFairBounds(); render(); updPeek();
   }).catch(err=>{ document.getElementById('ptxt').textContent='Failed to load'; console.error(err); });
 }
 boot();
