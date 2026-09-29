@@ -43,7 +43,7 @@ body.routing #route{display:flex}
 body.routing #pline{display:none}
 .sheet.tiny #pline,.sheet.tiny #route{visibility:hidden}
 #sbody{flex:0 0 auto;overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:4px 12px calc(12px + env(safe-area-inset-bottom))}
-#shdr{display:flex;align-items:baseline;gap:12px;padding:6px 2px 8px;position:sticky;top:-4px;z-index:2;background:var(--bg)}
+#shdr{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 12px;padding:6px 2px 8px;position:sticky;top:-4px;z-index:2;background:var(--bg)}
 .sheet:not(.open):not(.drag) #sbody{visibility:hidden}
 #stitle{flex:1;min-width:0;font-size:15px;font-weight:700}
 #shdr a{font-size:13px;color:var(--accent);font-weight:600;text-decoration:none;padding:4px 2px}
@@ -83,7 +83,17 @@ body.sheetup .fabs{visibility:hidden;pointer-events:none}
 .card .row{display:flex;justify-content:space-between;gap:8px;margin-top:8px}
 .card button,.fab{border:0;border-radius:10px;padding:8px 10px;background:var(--accent);color:#2a1a00;font-weight:700;font-size:13px}
 .fab{width:46px;height:46px;border-radius:50%;font-size:18px;box-shadow:0 6px 16px rgba(0,0,0,.4)}
-.leaflet-control-attribution{font-size:9px}
+.leaflet-control-attribution{font-size:9px;line-height:1.3;max-width:calc(100vw - 84px);background:rgba(255,255,255,.72)!important;color:#333;border-radius:0 4px 0 0;padding:0 4px!important}
+.leaflet-control-attribution a{color:#0b57a4}
+.leaflet-bottom.leaflet-left{bottom:var(--attv,56px);transition:bottom .22s ease}
+body.sdrag .leaflet-bottom.leaflet-left{transition:none}
+body.attin .leaflet-bottom.leaflet-left{visibility:hidden}
+.leaflet-bottom.leaflet-left .leaflet-control{margin:0}
+#shdr #legal a{font-size:inherit;font-weight:400;padding:0;color:#a88a5c;text-decoration:underline}
+.hsub a{color:var(--accent)}
+#lcred{display:none}
+.sheet.full #lcred{display:block}
+#legal{flex:1 0 100%;font-size:10px;line-height:1.3;color:#8a7350;padding:1px 0 0;text-align:right}
 .suggest{display:none;max-height:min(42vh,320px);overflow:auto;background:rgba(20,15,10,.96);border-radius:14px;padding:6px;box-shadow:0 8px 24px rgba(0,0,0,.4)}
 body.typing .suggest{display:block}
 body.typing .sheet,body.typing .fabs{visibility:hidden;pointer-events:none}
@@ -116,13 +126,13 @@ body.typing .sheet,body.typing .fabs{visibility:hidden;pointer-events:none}
     <div id="route"><div id="rtxt"></div><button id="rend" type="button">End</button></div>
   </div>
   <div id="sbody">
-    <div id="shdr"><span id="stitle"></span><a href="#" id="lwhat">What’s on</a><a href="#" id="lnear">Near me</a><span class="ver" id="ver"></span></div>
+    <div id="shdr"><span id="stitle"></span><a href="#" id="lwhat">What’s on</a><a href="#" id="lnear">Near me</a><span class="ver" id="ver"></span><div id="legal">Unofficial fan-made guide · not affiliated with the Bloomsburg Fair Association<span id="lcred"></span></div></div>
     <div id="results"></div>
   </div>
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-const VER='v44';
+const VER='v45';
 const BUST=Date.now();
 function loadJSON(url){
   return fetch(url+(url.includes('?')?'&':'?')+'v='+BUST,{cache:'no-store'}).then(r=>r.json());
@@ -130,8 +140,11 @@ function loadJSON(url){
 let FIXES={};
 const FAIR=[40.9954,-76.4676];
 const map=L.map('map',{zoomControl:false,maxZoom:19,minZoom:15,maxBoundsViscosity:1.0}).setView(FAIR,17);
-const streets=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OSM'}).addTo(map);
-const sat=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Esri'});
+const streets=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map);
+const sat=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Powered by <a href="https://www.esri.com" target="_blank" rel="noopener">Esri</a> · Source: Esri, Vantor, Earthstar Geographics, and the GIS User Community'});
+// v45: OSM credit always shown (street tiles, and the OSM road/venue data drawn over satellite); Esri credit added with the sat layer
+map.attributionControl.setPrefix(false); map.attributionControl.setPosition('bottomleft'); function syncCred(){ const c=document.getElementById('lcred'); if(c) c.innerHTML='Map '+map.attributionControl.getContainer().innerHTML; }
+map.attributionControl.addAttribution('© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors');
 let usingSat=false;
 const layers=L.layerGroup().addTo(map);
 const roadLayer=L.layerGroup().addTo(map);
@@ -818,7 +831,8 @@ chipData.forEach(([id,label])=>{
 });
 const satBtn=document.createElement('button');
 satBtn.textContent='Satellite';
-satBtn.onclick=()=>{ usingSat=!usingSat; if(usingSat){map.removeLayer(streets);sat.addTo(map);satBtn.classList.add('on');} else {map.removeLayer(sat);streets.addTo(map);satBtn.classList.remove('on');} };
+satBtn.onclick=()=>{ usingSat=!usingSat; if(usingSat){map.removeLayer(streets);sat.addTo(map);satBtn.classList.add('on');} else {map.removeLayer(sat);streets.addTo(map);satBtn.classList.remove('on');} syncCred(); };
+syncCred();
 chips.appendChild(satBtn);
 const qEl=document.getElementById('q');
 qEl.addEventListener('input',e=>{if(!evRouting()) clearEv();query=e.target.value.trim().toLowerCase();document.body.classList.add('typing');renderVendors();});
@@ -962,7 +976,7 @@ function renderWhatsOn(flashI,keep){
   const nk=nextEventKey(n);
   const info=hd?[hd.special||hd.label||'', 'Gates '+rngT(hd.gates), 'Exhibit buildings '+rngT(hd.exhibitBuildings), 'Rides '+rngT(hd.rides)].filter(Boolean).join(' \u00b7 '):'';
   const nav=`<div class="hsub" style="display:flex;justify-content:space-between">${prev?`<a href="#" data-wd="${prev}" style="color:var(--accent)">\u2039 ${fmtD(prev,true)}</a>`:'<span></span>'}${next?`<a href="#" data-wd="${next}" style="color:var(--accent)">${fmtD(next,true)} \u203a</a>`:''}</div>`;
-  el.innerHTML=(info?`<div class="hsub">${esc(info)}</div>`:'')+(evs.map(x=>evRow(x,n,nk)).join('')||'<div class="msg">No events listed for this day.</div>')+nav+'<div class="hsub">Official 2026 daily schedule (bloomsburgfair.com). Start times only.</div>';
+  el.innerHTML=(info?`<div class="hsub">${esc(info)}</div>`:'')+(evs.map(x=>evRow(x,n,nk)).join('')||'<div class="msg">No events listed for this day.</div>')+nav+'<div class="hsub">Times from <a href="https://bloomsburgfair.com/daily-schedule/" target="_blank" rel="noopener">bloomsburgfair.com</a> — check there for changes. Start times only.</div>';
   if(keep) return;
   const sb=document.getElementById('sbody');
   const tgt=(flashI!=null&&el.querySelector(`[data-evr="${flashI}"]`))||el.querySelector('.ev.next')||el.querySelector('.ev:not(.past)');
@@ -1024,10 +1038,12 @@ function sheetH(st){ const H=window.innerHeight; return st==='tiny'?16+SAFE:st==
 function applyVis(v){
   sheetEl.style.setProperty('--vis',v+'px');
   document.documentElement.style.setProperty('--fabv',Math.min(v,sheetH('peek'))+'px');
+  document.documentElement.style.setProperty('--attv',v+'px');
+  document.body.classList.toggle('attin',v>window.innerHeight*0.75);
   sbodyEl.style.height=Math.max(0,v-sheadEl.offsetHeight)+'px';
 }
 function setSheet(st){
-  SHEET=st; sheetEl.classList.toggle('tiny',st==='tiny'); sheetEl.classList.toggle('open',st==='half'||st==='full');
+  SHEET=st; sheetEl.classList.toggle('tiny',st==='tiny'); sheetEl.classList.toggle('open',st==='half'||st==='full'); sheetEl.classList.toggle('full',st==='full');
   if(window.scrollY||document.documentElement.scrollTop) window.scrollTo(0,0);
   document.body.classList.toggle('sheetup',st==='half'||st==='full');
   updPeek(); applyVis(sheetH(st));
@@ -1038,14 +1054,14 @@ function setSheet(st){
   sheadEl.addEventListener('pointermove',e=>{
     if(!d||e.pointerId!==d.id) return;
     const dy=e.clientY-d.y;
-    if(!d.moved){ if(Math.abs(dy)<6) return; d.moved=true; try{ sheadEl.setPointerCapture(e.pointerId); }catch(_){} sheetEl.classList.add('drag'); }
+    if(!d.moved){ if(Math.abs(dy)<6) return; d.moved=true; try{ sheadEl.setPointerCapture(e.pointerId); }catch(_){} sheetEl.classList.add('drag'); document.body.classList.add('sdrag'); }
     applyVis(Math.max(12,Math.min(sheetH('full'),d.v-dy)));
     d.s.push([e.clientY,e.timeStamp]); if(d.s.length>6) d.s.shift();
     e.preventDefault();
   });
   const end=e=>{
     if(!d||e.pointerId!==d.id) return;
-    const g=d; d=null; sheetEl.classList.remove('drag');
+    const g=d; d=null; sheetEl.classList.remove('drag'); document.body.classList.remove('sdrag');
     if(!g.moved) return;
     SUPPRESS=Date.now();
     const cur=parseFloat(sheetEl.style.getPropertyValue('--vis'))||sheetH(SHEET);
