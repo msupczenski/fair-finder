@@ -72,7 +72,7 @@ body.typing .sheet,body.typing .fabs{visibility:hidden;pointer-events:none}
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-const VER='v32';
+const VER='v33';
 const BUST=Date.now();
 function loadJSON(url){
   return fetch(url+(url.includes('?')?'&':'?')+'v='+BUST,{cache:'no-store'}).then(r=>r.json());
@@ -85,6 +85,7 @@ const streets=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
 const sat=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Esri'});
 let usingSat=false;
 const layers=L.layerGroup().addTo(map);
+const roadLayer=L.layerGroup().addTo(map);
 function icon(color){
   return L.divIcon({className:'',html:`<div style="width:16px;height:16px;background:${color};border:2px solid #fff;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,.5)"></div>`,iconSize:[16,16],iconAnchor:[8,8]});
 }
@@ -266,6 +267,30 @@ function posOf(v){
   if(f&&f.lat) return [f.lat,f.lng];
   return alongStreet(v)||rawPos(v);
 }
+function roadPoints(key){
+  const samples=anchorFor(key);
+  if(!samples.length) return [];
+  const step=stepFor(key);
+  let dlat=step.dlat, dlng=step.dlng;
+  if(samples.length>=2){
+    const a=samples[0], b=samples[samples.length-1];
+    const db=b.booth-a.booth;
+    if(Math.abs(db)>=5){ dlat=(b.lat-a.lat)/db; dlng=(b.lng-a.lng)/db; }
+  }
+  const s=samples[0];
+  return [
+    [s.lat+(1-s.booth)*dlat, s.lng+(1-s.booth)*dlng],
+    [s.lat+(130-s.booth)*dlat, s.lng+(130-s.booth)*dlng]
+  ];
+}
+function highlightRoad(key){
+  roadLayer.clearLayers();
+  if(!key) return;
+  const pts=roadPoints(key);
+  if(pts.length<2) return;
+  L.polyline(pts,{color:'#e8a317',weight:10,opacity:.35,lineCap:'round'}).addTo(roadLayer);
+  L.polyline(pts,{color:'#fff4c2',weight:3,opacity:.8,lineCap:'round'}).addTo(roadLayer);
+}
 let meMarker=null,meAcc=null,watchId=null,follow=false,filterCat='all',query='';
 const DATA={vendors:[],landmarks:[]};
 function score(v){
@@ -292,6 +317,13 @@ function renderVendors(){
   layers.clearLayers();
   const searching=!!(query||filterCat!=='all');
   const hits=DATA.vendors.filter(matches).sort((a,b)=>score(a)-score(b)||a.name.localeCompare(b.name));
+  let roadKey=null;
+  if(query){
+    const qaddr=parseAddr(query,true);
+    if(qaddr.key) roadKey=qaddr.key;
+    else if(hits[0]) roadKey=parseAddr(hits[0].loc,true).key;
+  }
+  highlightRoad(roadKey);
   if(searching) hits.slice(0,250).forEach(addVendor);
   const sheet=document.getElementById('sheet');
   if(searching) sheet.classList.remove('min');
@@ -309,7 +341,7 @@ function renderVendors(){
         document.getElementById('q').value=v.name; query=v.name.toLowerCase();
         document.body.classList.remove('typing');
         renderVendors();
-        const pp=posOf(v); map.setView(pp,19); addVendor(v);
+        const pp=posOf(v); highlightRoad(parseAddr(v.loc,true).key); map.setView(pp,19); addVendor(v);
         L.popup().setLatLng(pp).setContent(`<b>${v.name}</b><br>${v.loc}`).openOn(map);
       };
     });
@@ -327,7 +359,7 @@ function renderVendors(){
     </div>`).join('');
   el.querySelectorAll('button.go').forEach((b,idx)=>{
     const v=list[idx];
-    b.onclick=()=>{ const pp=posOf(v); map.setView(pp,19); addVendor(v); L.popup().setLatLng(pp).setContent(`<b>${v.name}</b><br>${v.loc}`).openOn(map); };
+    b.onclick=()=>{ const pp=posOf(v); highlightRoad(parseAddr(v.loc,true).key); map.setView(pp,19); addVendor(v); L.popup().setLatLng(pp).setContent(`<b>${v.name}</b><br>${v.loc}`).openOn(map); };
   });
 }
 function render(){ renderVendors(); }
