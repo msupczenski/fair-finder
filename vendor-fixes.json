@@ -142,5 +142,113 @@
     "loc": "10th Street North Ext. 5",
     "lat": 40.995678,
     "lng": -76.468865
+  },
+  "Carl's Caramel Corn": {
+    "name": "Carl's Caramel Corn",
+    "loc": "A Ave W:79",
+    "lat": 40.995906,
+    "lng": -76.467288
+  },
+  "Bartlebaugh Amusements": {
+    "name": "Bartlebaugh Amusements",
+    "loc": "Multiple Locations",
+    "lat": 40.996175,
+    "lng": -76.466714
+  },
+  "Grotto Pizza": {
+    "name": "Grotto Pizza",
+    "loc": "3rd Street:38 / 44-50",
+    "lat": 40.995715,
+    "lng": -76.466119
+  },
+  "Karschner's Concession's": {
+    "name": "Karschner's Concession's",
+    "loc": "3rd Street: 52; 4th Street: 29",
+    "lat": 40.9956,
+    "lng": -76.466039
+  },
+  "Roan's": {
+    "name": "Roan's",
+    "loc": "3rd Street: 84; 4th Street: 54",
+    "lat": 40.995394,
+    "lng": -76.465866
+  },
+  "Benton Cider Mill": {
+    "name": "Benton Cider Mill",
+    "loc": "3rd Street: 96",
+    "lat": 40.99505,
+    "lng": -76.465602
+  },
+  "PA Dutch Food": {
+    "name": "PA Dutch Food",
+    "loc": "E Ave E:59",
+    "lat": 40.99512,
+    "lng": -76.464223
+  },
+  "Laubach Concession's": {
+    "name": "Laubach Concession's",
+    "loc": "Multiple Locations",
+    "lat": 40.995314,
+    "lng": -76.46381
+  },
+  "Little Christmas Shop": {
+    "name": "Little Christmas Shop",
+    "loc": "E Ave E:136",
+    "lat": 40.996079,
+    "lng": -76.462243
+  },
+  "Heap's Dinner Stand (Woody's Place)": {
+    "name": "Heap's Dinner Stand (Woody's Place)",
+    "loc": "E Ave E:21",
+    "lat": 40.994837,
+    "lng": -76.464758
+  },
+  "Honey's Sugar Waffles (Dee Jay Concessions)": {
+    "name": "Honey's Sugar Waffles (Dee Jay Concessions)",
+    "loc": "E Ave W: G / H",
+    "lat": 40.994409,
+    "lng": -76.465713
+  },
+  "Vince's Cheesesteak LLC": {
+    "name": "Vince's Cheesesteak LLC",
+    "loc": "E Ave W:40 / 50",
+    "lat": 40.994237,
+    "lng": -76.466048
+  },
+  "Shuman Roasted Sweet Corn": {
+    "name": "Shuman Roasted Sweet Corn",
+    "loc": "7th Street: 76 & 78A",
+    "lat": 40.994335,
+    "lng": -76.466526
+  },
+  "Tony's Steaks": {
+    "name": "Tony's Steaks",
+    "loc": "N Ext Mach Row: 7/9; 7th St: 56; 8th St: 55",
+    "lat": 40.994721,
+    "lng": -76.467011
+  },
+  "Cherry Hill Farm": {
+    "name": "Cherry Hill Farm",
+    "loc": "C Ave W: 104",
+    "lat": 40.994832,
+    "lng": -76.46732
+  },
+  "Old Farmer Tea Company LLC": {
+    "name": "Old Farmer Tea Company LLC",
+    "loc": "10th Street: 23",
+    "lat": 40.994812,
+    "lng": -76.468119
+  },
+  "Redline BBQ": {
+    "name": "Redline BBQ",
+    "loc": "11th St: 41",
+    "lat": 40.994407,
+    "lng": -76.468508
+  },
+  "Fizzi Pop": {
+    "name": "Fizzi Pop",
+    "loc": "11th Street: 70; 8th St: 45",
+    "lat": 40.993951,
+    "lng": -76.468107
   }
 }
