@@ -88,5 +88,59 @@
     "loc": "6th Street: 7; A Ave W: 109; A Ave W: 111",
     "lat": 40.995454,
     "lng": -76.467598
+  },
+  "Randevoo Food Truck": {
+    "name": "Randevoo Food Truck",
+    "loc": "C1 Ave W: 105",
+    "lat": 40.99438,
+    "lng": -76.468215
+  },
+  "Kaddy Shack Golf Karts": {
+    "name": "Kaddy Shack Golf Karts",
+    "loc": "11th Street: 8 / 14 / 20",
+    "lat": 40.994593,
+    "lng": -76.468704
+  },
+  "Lora's Grilled Beef & Cheddar": {
+    "name": "Lora's Grilled Beef & Cheddar",
+    "loc": "N Ext 12th Street:62 & 68",
+    "lat": 40.995033,
+    "lng": -76.469593
+  },
+  "La Cheesy Arepa": {
+    "name": "La Cheesy Arepa",
+    "loc": "N Ext 12th St: 70",
+    "lat": 40.9951,
+    "lng": -76.469638
+  },
+  "Curren's County Fair Cookies": {
+    "name": "Curren's County Fair Cookies",
+    "loc": "N Ext 12th St: 92",
+    "lat": 40.995685,
+    "lng": -76.47012
+  },
+  "Licorice Man": {
+    "name": "Licorice Man",
+    "loc": "N Ext 11th St: 139",
+    "lat": 40.995529,
+    "lng": -76.469774
+  },
+  "Shrimp Shack": {
+    "name": "Shrimp Shack",
+    "loc": "N Ext 11th St: 147/149/151",
+    "lat": 40.995848,
+    "lng": -76.470048
+  },
+  "Huck's Grill Shack": {
+    "name": "Huck's Grill Shack",
+    "loc": "A1 Ave W:3",
+    "lat": 40.996001,
+    "lng": -76.469999
+  },
+  "Wandering Brewtique": {
+    "name": "Wandering Brewtique",
+    "loc": "10th Street North Ext. 5",
+    "lat": 40.995678,
+    "lng": -76.468865
   }
 }
