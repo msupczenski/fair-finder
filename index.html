@@ -72,7 +72,7 @@ body.typing .sheet,body.typing .fabs{visibility:hidden;pointer-events:none}
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-const VER='v31';
+const VER='v32';
 const BUST=Date.now();
 function loadJSON(url){
   return fetch(url+(url.includes('?')?'&':'?')+'v='+BUST,{cache:'no-store'}).then(r=>r.json());
@@ -145,10 +145,8 @@ function rawPos(v){
   const west=ST_LNG[12]||ST_LNG[11]||-76.4696, east=ST_LNG[3]||ST_LNG[2]||-76.4664;
   if(n && ST_LNG[n]!=null){
     lng=ST_LNG[n];
-    if(loc.includes('n ext')||loc.includes('north ext')||/\bstreet n\b/.test(loc)||/\bst n\b/.test(loc)){
+    if(loc.includes('n ext')||loc.includes('north ext')){
       const two=R('s2'); lat=north+t*((two?two.lat:40.9976)-north);
-    } else if(loc.includes('street s')||/\bst s\b/.test(loc)||loc.includes('south')){
-      lat=south-t*0.00035;
     } else {
       lat=north-t*(north-south);
     }
@@ -158,9 +156,8 @@ function rawPos(v){
     else if(/ave\s*e/.test(loc)) lng=west+t*(east-west);
     else lng=east+0.4*(west-east);
   } else if(n) lat=mid;
-  if(n===2){ const r=R('s2'); if(r){ lat=r.lat+(booth?((booth-50)*0.00001):0); lng=r.lng; } }
   if(loc.includes('herb')) { const r=R('s11h'); if(r){lat=r.lat;lng=r.lng;} }
-  if(loc.includes('machin') || loc.includes('mach row')) { const r=R('s12m'); if(r){lat=r.lat+(booth?((booth-20)*0.000012):0);lng=r.lng;} }
+  if(loc.includes('machin') || loc.includes('mach row')) { const r=R('s12m'); if(r){lat=r.lat;lng=r.lng;} }
   if(/\be\s*ave/.test(loc)) {
     const a=R('eave'), f=R('free');
     if(f&&a){ lat=f.lat+(a.lat-f.lat)*t; lng=f.lng+(a.lng-f.lng)*t; }
@@ -179,42 +176,90 @@ function rawPos(v){
   if(loc.includes('cattle')||loc.includes('livestock')) { const r=R('fave'); if(r){lat=r.lat;lng=r.lng;} }
   return [lat,lng];
 }
-function parseAddr(loc){
-  const s=(loc||'').toLowerCase();
+function firstClause(loc){ return String(loc||'').split(';')[0]; }
+function parseAddr(loc, firstOnly){
+  const s=(firstOnly?firstClause(loc):String(loc||'')).toLowerCase();
   if(/multiple locations/.test(s)) return {key:null,booth:null};
   const streets=[...s.matchAll(/(\d+)\s*(?:st|nd|rd|th)?\s*(?:st(?:reet)?)/g)].map(m=>+m[1]);
   const next=/n ext|north ext/.test(s);
   const booths=[...s.matchAll(/:\s*[a-z]*\s*(\d+)/g)].map(m=>+m[1]);
   const ave=(s.match(/\b([a-f])1?\s*ave\s*([we])?/)||[]);
   let key=null;
-  if(streets.length===1) key=(next?'nx-':'st-')+streets[0];
-  else if(!streets.length && ave[1]) key='ave-'+ave[1]+(ave[2]||'');
+  if(streets.length) key=(next?'nx-':'st-')+streets[0];
+  else if(ave[1]) key='ave-'+ave[1]+(ave[2]||'');
   return {key, booth:booths[0]||null};
 }
 function streetSamples(){
   const g={};
   Object.values(FIXES).forEach(f=>{
-    const a=parseAddr(f.loc);
+    const a=parseAddr(f.loc,false);
     if(!a.key || a.booth==null || !f.lat) return;
+    if(/;/.test(f.loc||'') && ((f.loc.match(/\d+\s*(?:st|nd|rd|th)?\s*st/gi)||[]).length>1)) return;
     (g[a.key]=g[a.key]||[]).push({booth:a.booth,lat:f.lat,lng:f.lng});
   });
   Object.values(g).forEach(arr=>arr.sort((x,y)=>x.booth-y.booth));
   return g;
 }
-function alongStreet(v){
-  const a=parseAddr(v.loc);
-  if(!a.key || a.booth==null) return null;
-  const samples=streetSamples()[a.key]||[];
-  if(!samples.length) return null;
-  if(samples.length===1){
-    const s=samples[0], db=a.booth-s.booth;
-    return [s.lat+db*-0.000016, s.lng+db*0.000015];
+function fitStep(arr){
+  if(!arr || arr.length<2) return null;
+  let sl=0,sn=0,n=0;
+  for(let i=0;i<arr.length;i++){
+    for(let j=i+1;j<arr.length;j++){
+      const db=arr[j].booth-arr[i].booth;
+      if(Math.abs(db)<5) continue;
+      sl+=(arr[j].lat-arr[i].lat)/db;
+      sn+=(arr[j].lng-arr[i].lng)/db;
+      n++;
+    }
   }
-  let lo=samples[0], hi=samples[samples.length-1];
-  for(const s of samples){ if(s.booth<=a.booth) lo=s; if(s.booth>=a.booth){ hi=s; break; } }
-  if(lo.booth===hi.booth) return [lo.lat,lo.lng];
-  const t=(a.booth-lo.booth)/(hi.booth-lo.booth);
-  return [lo.lat+t*(hi.lat-lo.lat), lo.lng+t*(hi.lng-lo.lng)];
+  return n?{dlat:sl/n,dlng:sn/n}:null;
+}
+function stepFor(key){
+  const g=streetSamples();
+  const mine=fitStep(g[key]);
+  if(mine) return mine;
+  if(String(key).startsWith('ave-') && /e$/.test(key)) return {dlat:0.000011,dlng:0.000022};
+  if(String(key).startsWith('ave-') && /w$/.test(key)) return {dlat:-0.000008,dlng:-0.000016};
+  if(String(key).startsWith('nx-')) return fitStep(g['nx-12']||g['nx-11']) || {dlat:0.000026,dlng:-0.000018};
+  const pooled=[].concat(g['st-3']||[], g['st-10']||[], g['st-11']||[], g['st-7']||[]);
+  return fitStep(pooled) || {dlat:-0.000015,dlng:0.000013};
+}
+function anchorFor(key){
+  const g=streetSamples();
+  if(g[key] && g[key].length) return g[key];
+  if(String(key).startsWith('st-')){
+    const n=+key.slice(3);
+    const ref=REFS.find(r=>r.st===n && r.ave==='b') || REFS.find(r=>r.st===n);
+    const lng=(ref && ref.lng) || ST_LNG[n] || FAIR[1];
+    const lat=(ref && ref.lat) || (AVE_LAT.b||FAIR[0]);
+    return [{booth:18,lat,lng}];
+  }
+  if(key==='ave-ee'){
+    const r=REFS.find(x=>x.id==='eave');
+    return r?[{booth:80,lat:r.lat,lng:r.lng}]:[];
+  }
+  if(key==='ave-ew'){
+    const r=REFS.find(x=>x.id==='free');
+    return r?[{booth:40,lat:r.lat,lng:r.lng}]:[];
+  }
+  return [];
+}
+function alongStreet(v){
+  const a=parseAddr(v.loc,true);
+  if(!a.key || a.booth==null) return null;
+  const samples=anchorFor(a.key);
+  if(!samples.length) return null;
+  if(samples.length>=2){
+    let lo=samples[0], hi=samples[samples.length-1];
+    for(const s of samples){ if(s.booth<=a.booth) lo=s; if(s.booth>=a.booth){ hi=s; break; } }
+    if(lo.booth!==hi.booth){
+      const t=(a.booth-lo.booth)/(hi.booth-lo.booth);
+      return [lo.lat+t*(hi.lat-lo.lat), lo.lng+t*(hi.lng-lo.lng)];
+    }
+  }
+  const s=samples[0];
+  const step=stepFor(a.key);
+  return [s.lat+(a.booth-s.booth)*step.dlat, s.lng+(a.booth-s.booth)*step.dlng];
 }
 function posOf(v){
   const f=FIXES[v.name];
