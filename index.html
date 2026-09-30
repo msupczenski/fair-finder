@@ -79,6 +79,7 @@ body.routing #pline{display:none}
 body.sheetup .fabs{visibility:hidden;pointer-events:none}
 #rtxt{flex:1;min-width:0;font-size:14px;font-weight:600;line-height:1.25}
 #rend{flex:0 0 auto;border:0;border-radius:10px;padding:9px 14px;background:var(--accent);color:#2a1a00;font-weight:700;font-size:14px}
+.plocs{margin-top:4px}.ploc{display:flex;align-items:center;gap:8px;justify-content:space-between;padding:3px 0;border-top:1px solid rgba(0,0,0,.08)}.ploc.here span{font-weight:700}.ploc .pwalk{margin-top:0;padding:4px 9px}.pn{color:#7a5a20}.nl{color:var(--accent);font-weight:700}
 .pwalk{margin-top:6px;border:0;border-radius:8px;padding:6px 10px;background:var(--accent);color:#2a1a00;font-weight:700;font-size:12px}
 .chips{display:flex;gap:6px;overflow:auto}
 .chips button{flex:0 0 auto;border:0;border-radius:999px;padding:7px 12px;background:#3a2a18;color:var(--ink);font-size:13px}
@@ -137,7 +138,7 @@ body.typing .sheet,body.typing .fabs{visibility:hidden;pointer-events:none}
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-const VER='v48';
+const VER='v49';
 if(window.navigator.standalone===true || (window.matchMedia&&matchMedia('(display-mode: standalone)').matches)) document.documentElement.classList.add('standalone');
 const BUST=Date.now();
 function loadJSON(url){
@@ -350,6 +351,82 @@ function posOf(v){
   if(f&&f.lat) return [f.lat,f.lng];
   return alongStreet(v)||rawPos(v);
 }
+
+// ---- v49: vendors listed at more than one spot get one pin per spot ----
+// loc is split on ';' and on ', & / and' when the next words start a new street/avenue/building. Same-road spots merge
+// unless their booth numbers are 20+ apart. Each spot is placed with the normal estimate (booth + OSM road snap) by
+// passing a one-spot copy of the vendor. A walked pin (vendor-fixes) replaces only the spot it was walked at.
+const BLDGS=[[/freedom/,'Freedom Hall',1],[/\barts\b|\ba\s*&\s*c\b/,'Arts & Crafts',1],[/grandstand/,'Grandstand',1],[/liberty/,'Liberty Hall',1],[/keystone/,'Keystone Ag Center',1],[/hort/,'Horticulture Hall',1],[/\bind\w*\s*bldg|industrial/,'Ind Bldg',0],[/state\s*b/,'State Building',0],[/educ/,'Education Building',0],[/\bag\s*b/,'Ag Building',0],[/\bm\.?\s*park|millennium/,'M. Park',0]];
+const PLACE_RE=/^(?:n\.?\s*ext\.?\s*(?:\d+\s*(?:st|nd|rd|th)?\s*st|mach)|\d+\s*(?:st|nd|rd|th)?\s*st(?:reet)?\b|[a-f]1?\s+ave|ave(?:nue)?\s+[a-f]\b|free\s*stage|mach|herb\s*row|veteran|freedom|arts\b|a\s*&\s*c\b|grandstand|liberty|keystone|hort|ind\w*\s*bldg|industrial|state\s*b|educ|ag\s*b|m\.\s*park)/i;
+const LOC_GAP=20;
+function locClauses(loc){
+  const out=[];
+  String(loc||'').replace(/(\d)\s+(?=\d+\s*(?:st|nd|rd|th)\s*st)/gi,'$1; ').split(';').forEach(c=>{
+    c=c.trim(); if(!c) return;
+    const re=/\s*(?:,|&|\/|\band\b)\s*/g; let last=0, m;
+    while((m=re.exec(c))){ const after=c.slice(m.index+m[0].length); if(PLACE_RE.test(after)){ out.push(c.slice(last,m.index).trim()); last=m.index+m[0].length; } }
+    out.push(c.slice(last).trim());
+  });
+  return out.filter(Boolean);
+}
+function roadMatch(s){
+  let best=null;
+  ROAD_PATS.forEach(([re,fn])=>{ const m=s.match(re); if(m && (!best || m.index<best.i || (m.index===best.i && m[0].length>best.len))) best={i:m.index,len:m[0].length,key:fn(m)}; });
+  return best;
+}
+function clausePlace(c){
+  const low=c.toLowerCase();
+  if(/mul\w*ple\s+loc/.test(low)) return null;
+  const r=roadMatch(low);
+  if(r){ const rest=c.slice(r.i+r.len), label=c.slice(r.i,r.i+r.len).trim().replace(/[:\s]+$/,''); return {kind:'road',key:r.key,label,booths:[...rest.matchAll(/\d+/g)].map(x=>({n:+x[0],label,raw:c})),raw:c}; }
+  for(const [re,name,mapped] of BLDGS) if(re.test(low)) return {kind:'bldg',key:'b:'+name,label:name,mapped:!!mapped,raw:c};
+  return null;
+}
+function locSpots(loc){
+  const groups=new Map();
+  locClauses(loc).forEach(c=>{ const p=clausePlace(c); if(!p) return; const g=groups.get(p.key); if(g){ g.raws.push(p.raw); if(p.booths) g.booths.push(...p.booths); } else groups.set(p.key,{...p,raws:[p.raw],booths:p.booths?p.booths.slice():null}); });
+  const spots=[];
+  groups.forEach(g=>{
+    if(g.kind==='bldg'){ spots.push({key:g.key,text:g.raws.join('; '),loc:g.raws[0],mapped:g.mapped}); return; }
+    const nums=[...new Set(g.booths.map(b=>b.n))], lab=n=>g.booths.find(b=>b.n===n).label;
+    if(!nums.length){ spots.push({key:g.key,text:g.raws.join('; '),loc:g.label,mapped:true}); return; }
+    const sorted=nums.slice().sort((a,b)=>a-b), cl=[[sorted[0]]];
+    for(let i=1;i<sorted.length;i++){ if(sorted[i]-sorted[i-1]>=LOC_GAP) cl.push([sorted[i]]); else cl[cl.length-1].push(sorted[i]); }
+    if(cl.length===1){ spots.push({key:g.key,text:g.raws.join('; '),loc:lab(nums[0])+': '+nums[0],mapped:true}); return; }
+    cl.map(set=>nums.filter(n=>set.includes(n))).sort((a,b)=>nums.indexOf(a[0])-nums.indexOf(b[0])).forEach(bs=>{ const l0=lab(bs[0]), rs=[...new Set(g.booths.filter(b=>bs.includes(b.n)).map(b=>b.raw))], own=rs.every(r=>g.booths.filter(b=>b.raw===r).every(b=>bs.includes(b.n))); spots.push({key:g.key,text:own?rs.join('; '):l0+': '+bs.join(', '),loc:l0+': '+bs[0],mapped:true}); });
+  });
+  return spots;
+}
+let LOCC={fx:null,refs:null,m:new WeakMap()};
+function spotEst(v,sp,i){ const q={name:v.name+'\u0000'+i,loc:sp.loc,desc:v.desc,cats:v.cats,lat:v.lat,lng:v.lng}; return alongStreet(q)||rawPos(q); }
+function locsOf(v){
+  if(LOCC.fx!==FIXES || LOCC.refs!==REFS) LOCC={fx:FIXES,refs:REFS,m:new WeakMap()};
+  const f=FIXES[v.name], sig=v.loc+'|'+(f?f.lat+','+f.lng+','+f.loc:'');
+  let c=LOCC.m.get(v); if(c && c.sig===sig) return c;
+  const spots=locSpots(v.loc), placed=spots.filter(x=>x.mapped);
+  c={sig,spots,multi:placed.length>1,fixTo:null,ambiguous:false,pins:null};
+  if(!c.multi){ c.pins=[{i:0,text:v.loc||'',key:parseAddr(v.loc,true).key,pos:posOf(v)}]; LOCC.m.set(v,c); return c; }
+  c.pins=placed.map((sp,i)=>({i,text:sp.text,key:sp.key.startsWith('b:')?null:sp.key,pos:spotEst(v,sp,i)}));
+  if(f && f.lat){
+    const fl=[+f.lat,+f.lng], own=f.loc&&f.loc!==v.loc?locSpots(f.loc).filter(x=>x.mapped):null;
+    let j=-1;
+    if(own && own.length===1){ j=c.pins.findIndex((p,i)=>placed[i].key===own[0].key&&placed[i].loc===own[0].loc); }
+    if(j<0){ const d=c.pins.map(p=>hav(fl,p.pos)), o=d.map((x,i)=>i).sort((a,b)=>d[a]-d[b]); if(d[o[0]]<=40 && d[o[1]]>=2*d[o[0]] && d[o[1]]-d[o[0]]>=25) j=o[0]; }
+    if(j>=0){ c.fixTo=j; c.pins[j].pos=fl; c.pins[j].walked=true; }
+    else { c.ambiguous=true; c.multi=false; c.pins=[{i:0,text:v.loc||'',key:parseAddr(v.loc,true).key,pos:posOf(v),walked:true}]; }
+  }
+  LOCC.m.set(v,c); return c;
+}
+function pinsOf(v){ return locsOf(v).pins; }
+// nearest spot by walking distance from the current fix (if on the grounds), else the first listed spot
+function nearestPin(v,ll){
+  const ps=pinsOf(v); if(ps.length<2) return ps[0];
+  if(!ll){ const f=RT.fix||LASTFIX; ll=f && !AWAY && !isAway(f.ll) && Date.now()-f.t<10*60000 ? f.ll : null; }
+  if(!ll || isAway(ll)) return ps[0];
+  let best=ps[0], bd=Infinity;
+  ps.forEach(p=>{ let d; const r=RT.g?rtRoute(ll,p.pos):null; d=r?r.S.d+r.len+r.T.d:hav(ll,p.pos); if(d<bd){ bd=d; best=p; } });
+  return best;
+}
 // OSM way geometry for the grounds roads (Overpass, 2026-09-28), simplified to ~1 m. Static: no runtime API calls.
 const OSM_ROADS={'st-2':[[[40.99781,-76.462998],[40.996706,-76.461908],[40.996439,-76.461858]]],'st-3':[[[40.996239,-76.466563],[40.99599,-76.466373],[40.995299,-76.465785],[40.994619,-76.465283]]],'st-4':[[[40.996085,-76.466895],[40.995139,-76.466114]]],'st-5':[[[40.995954,-76.467173],[40.994303,-76.465899]]],'st-6':[[[40.995602,-76.467229],[40.994879,-76.466662]]],'st-7':[[[40.995483,-76.467484],[40.994529,-76.466711],[40.994113,-76.466321]]],'st-8':[[[40.99542,-76.467622],[40.994708,-76.46706]]],'st-9':[[[40.995341,-76.467799],[40.994792,-76.467354],[40.994623,-76.467236]]],'st-10':[[[40.995076,-76.468382],[40.99436,-76.467741],[40.994317,-76.467673],[40.994135,-76.467492],[40.993732,-76.46712]]],'st-11':[[[40.994834,-76.468885],[40.993464,-76.467667]]],'st-12':[[[40.994334,-76.468891],[40.993424,-76.468095]]],'nx-11':[[[40.99614,-76.470265],[40.995371,-76.469634],[40.994914,-76.469198]]],'nx-12':[[[40.994817,-76.469394],[40.996063,-76.470431]]],'ave-a':[[[40.994738,-76.469547],[40.995229,-76.46851],[40.995493,-76.468231],[40.998058,-76.462437],[40.998182,-76.46194]]],'ave-b':[[[40.99599,-76.466373],[40.994595,-76.469411]],[[40.997586,-76.462787],[40.998049,-76.461746]]],'ave-c':[[[40.995618,-76.466059],[40.995235,-76.466943],[40.995112,-76.46718],[40.994488,-76.468566],[40.994242,-76.469076]]],'ave-d':[[[40.995299,-76.465785],[40.994879,-76.466662],[40.994708,-76.46706],[40.994394,-76.467668],[40.993888,-76.468764]],[[40.996706,-76.461908],[40.997178,-76.461072]]],'ave-e':[[[40.995308,-76.46366],[40.994619,-76.465283],[40.994303,-76.465899],[40.993464,-76.467667]]],'ave-f':[[[40.993262,-76.467568],[40.993424,-76.466849],[40.995055,-76.463739],[40.995308,-76.46366]]],'ave-b1':[[[40.994921,-76.468252],[40.994693,-76.468765]]],'ave-c1':[[[40.994934,-76.467045],[40.994547,-76.467912],[40.9943,-76.468407]]],herb:[[[40.995204,-76.469956],[40.995721,-76.468915]]],mach:[[[40.994738,-76.469547],[40.994242,-76.469076],[40.993338,-76.468264]]],'mach-ne':[[[40.994738,-76.469547],[40.995204,-76.469956],[40.995793,-76.470438]]],free:[[[40.994529,-76.466711],[40.994135,-76.467492]]],vets:[[[40.994642,-76.466171],[40.994429,-76.466611]]]};
 function roadBase(key){ return String(key||'').replace(/^(ave-[a-f]1?)[we]$/,'$1'); }
@@ -497,7 +574,9 @@ function roadPoints(key){
 }
 function highlightRoad(key){
   roadLayer.clearLayers();
-  if(!key) return;
+  (Array.isArray(key)?[...new Set(key)]:[key]).forEach(k=>{ if(k) hlOne(k); });
+}
+function hlOne(key){
   const pts=roadPoints(key);
   if(pts.length<2) return;
   L.polyline(pts,{color:'#e8a317',weight:10,opacity:.35,lineCap:'round'}).addTo(roadLayer);
@@ -634,7 +713,7 @@ function rtDraw(){
   } else if(!r && RT.g){
     const T=rtProject(RT.pin); if(T && T.d>3) L.polyline([T.ll,RT.pin],dash).addTo(RT.layer);
   }
-  L.circleMarker(RT.pin,{radius:11,color:'#2a1a00',weight:3,fillColor:'#e8a317',fillOpacity:1}).addTo(RT.layer).bindPopup(RT.v.ev?evPop(RT.v.ei):popHtml(RT.v));
+  L.circleMarker(RT.pin,{radius:11,color:'#2a1a00',weight:3,fillColor:'#e8a317',fillOpacity:1}).addTo(RT.layer).bindPopup(RT.v.ev?evPop(RT.v.ei):popHtml(RT.v,false,RT.multi?RT.li:undefined));
 }
 function rtStatus(){
   const el=document.getElementById('rtxt'); if(!el) return;
@@ -657,6 +736,8 @@ function rtWatch(){
   RT.watch=navigator.geolocation.watchPosition(p=>{
     RT.gpsOff=false;
     RT.fix={ll:[p.coords.latitude,p.coords.longitude],acc:p.coords.accuracy,t:Date.now()}; LASTFIX=RT.fix;
+    // v49: 'Walk to nearest' started before any GPS fix: pick the nearest spot once the first fix arrives
+    if(RT.on && RT.auto){ RT.auto=false; const np=nearestPin(RT.v,RT.fix.ll); if(np && np.i!==RT.li){ RT.li=np.i; RT.pin=np.pos; RT.path=null; RT.fitted=0; rtLabels(); } }
     placeMe(p.coords.latitude,p.coords.longitude,p.coords.accuracy);
     rtUpdate();
   },err=>{
@@ -666,12 +747,15 @@ function rtWatch(){
 }
 function rtLabels(){
   const cur=RT.on&&!RT.v.ev?DATA.vendors.indexOf(RT.v):-1, cure=RT.on&&RT.v.ev?RT.v.ei:-1;
-  document.querySelectorAll('[data-vi]').forEach(b=>{ b.textContent=(+b.dataset.vi===cur)?'End':(b.classList.contains('pwalk')?'Walk here':'Walk'); });
+  document.querySelectorAll('[data-vi]').forEach(b=>{ const on=+b.dataset.vi===cur && (b.dataset.li==null || +b.dataset.li===RT.li); b.textContent=on?'End':(b.dataset.lab||(b.classList.contains('pwalk')?'Walk here':'Walk')); });
   document.querySelectorAll('[data-ei]').forEach(b=>{ b.textContent=(+b.dataset.ei===cure)?'End':'Walk here'; });
 }
-function rtStart(v){
+function rtStart(v,li){
   if(!RT.g) return;
-  RT.on=true; RT.v=v; RT.pin=v.pin||posOf(v); RT.path=null; RT.rem=null; RT.arrived=false; RT.lastRoute=0; RT.reroutes=0; RT.fitted=0;
+  let lp=null; if(!v.ev && !v.pin){ const ps=pinsOf(v); lp=(li!=null&&ps[li])||nearestPin(v); }
+  RT.li=lp?lp.i:null; RT.multi=!!(lp&&pinsOf(v).length>1);
+  const fx=RT.fix||LASTFIX; RT.auto=RT.multi && li==null && !(fx && Date.now()-fx.t<10*60000);
+  RT.on=true; RT.v=v; RT.pin=v.pin||(lp?lp.pos:posOf(v)); RT.path=null; RT.rem=null; RT.arrived=false; RT.lastRoute=0; RT.reroutes=0; RT.fitted=0;
   RT.fallback=rtGate();
   roadLayer.clearLayers(); map.closePopup();
   document.body.classList.add('routing');
@@ -688,15 +772,19 @@ function rtEnd(){
   if(wasEv) clearEv();
   rtLabels(); updPeek();
 }
-function popHtml(v,desc){
-  return `<b>${v.name}</b><br>${v.loc}${desc&&v.desc?'<br><small>'+v.desc+'</small>':''}<br><button class="pwalk" data-vi="${DATA.vendors.indexOf(v)}">${RT.on&&RT.v===v?'End':'Walk here'}</button>`;
+function popHtml(v,desc,li){
+  const ps=v.ev?[]:pinsOf(v), vi=DATA.vendors.indexOf(v);
+  if(ps.length<2) return `<b>${v.name}</b><br>${v.loc}${desc&&v.desc?'<br><small>'+v.desc+'</small>':''}<br><button class="pwalk" data-vi="${vi}">${RT.on&&RT.v===v?'End':'Walk here'}</button>`;
+  const rows=ps.map(p=>`<div class="ploc${p.i===li?' here':''}"><span>${p.i===li?'\ud83d\udccd ':''}${esc(p.text)}</span><button class="pwalk" data-vi="${vi}" data-li="${p.i}" data-lab="Walk">${RT.on&&RT.v===v&&RT.li===p.i?'End':'Walk'}</button></div>`).join('');
+  return `<b>${v.name}</b><br><small class="pn">${ps.length} locations${li!=null?' \u00b7 this pin: '+esc(ps[li].text):''}</small>${desc&&v.desc?'<br><small>'+v.desc+'</small>':''}<div class="plocs">${rows}</div><button class="pwalk" data-vi="${vi}" data-lab="Walk to nearest">${RT.on&&RT.v===v?'End':'Walk to nearest'}</button>`;
 }
 document.addEventListener('click',e=>{
   const b=e.target && e.target.closest && e.target.closest('[data-vi],[data-ei]');
   if(!b) return;
   e.preventDefault(); e.stopPropagation();
   const v=b.dataset.ei!=null?evTarget(+b.dataset.ei):DATA.vendors[+b.dataset.vi]; if(!v) return;
-  if(RT.on && RT.v===v) rtEnd(); else rtStart(v);
+  const li=b.dataset.li!=null?+b.dataset.li:null;
+  if(RT.on && RT.v===v && (li==null || RT.li===li)) rtEnd(); else rtStart(v,li);
 },true);
 try{ RT.g=buildRouteGraph(); }catch(err){ console.error('route graph',err); }
 // ---- v42: keep the map on the fairgrounds ----
@@ -777,19 +865,31 @@ function searchDist(){
   const f=LASTFIX; if(!f || AWAY || Date.now()-f.t>10*60000 || isAway(f.ll)) return null;
   if(SDIST.t===f.t) return SDIST.m;
   const m=new Map(), g=RT.g, S=g?rtProject(f.ll):null;
-  if(!S){ DATA.vendors.forEach(v=>m.set(v,hav(f.ll,posOf(v)))); }
+  if(!S){ DATA.vendors.forEach(v=>m.set(v,Math.min(...pinsOf(v).map(p=>hav(f.ll,p.pos))))); }
   else {
     const n=g.nodes.length, dist=new Array(n).fill(Infinity), done=new Array(n).fill(false), es=g.edges[S.ei];
     dist[es.a]=S.t*es.w; dist[es.b]=Math.min(dist[es.b],(1-S.t)*es.w);
     for(;;){ let u=-1,bd=Infinity; for(let i=0;i<n;i++) if(!done[i]&&dist[i]<bd){bd=dist[i];u=i;} if(u<0) break; done[u]=true; g.adj[u].forEach(([v,w])=>{ if(dist[u]+w<dist[v]) dist[v]=dist[u]+w; }); }
-    DATA.vendors.forEach(v=>{ const T=rtProject(posOf(v)); let d=Infinity; if(T){ const et=g.edges[T.ei]; d=Math.min(dist[et.a]+T.t*et.w, dist[et.b]+(1-T.t)*et.w); if(T.ei===S.ei) d=Math.min(d,Math.abs(S.t-T.t)*es.w); d+=S.d+T.d; } m.set(v,d); });
+    DATA.vendors.forEach(v=>{ let best=Infinity; pinsOf(v).forEach(p=>{ const T=rtProject(p.pos); let d=Infinity; if(T){ const et=g.edges[T.ei]; d=Math.min(dist[et.a]+T.t*et.w, dist[et.b]+(1-T.t)*et.w); if(T.ei===S.ei) d=Math.min(d,Math.abs(S.t-T.t)*es.w); d+=S.d+T.d; } if(d<best) best=d; }); m.set(v,best); });
   }
   SDIST={t:f.t,m}; return m;
 }
 function addVendor(v){
   const color=COLORS[(v.cats||[])[0]]||COLORS.other;
-  L.marker(posOf(v),{icon:icon(color)}).addTo(layers).bindPopup(()=>popHtml(v,true));
+  const ps=pinsOf(v);
+  if(ps.length<2){ L.marker(posOf(v),{icon:icon(color)}).addTo(layers).bindPopup(()=>popHtml(v,true)); return; }
+  ps.forEach(p=>L.marker(p.pos,{icon:icon(color)}).addTo(layers).bindPopup(()=>popHtml(v,true,p.i),{autoPanPaddingTopLeft:L.point(10,130)}));
 }
+function locKeys(v){ return pinsOf(v).map(p=>p.key); }
+// show one vendor on the map: single spot = zoom + popup (as before); several spots = all pins, map fitted to them; li = one chosen spot
+function showVendor(v,li){
+  const ps=pinsOf(v);
+  highlightRoad(li!=null&&ps.length>1?ps[li].key:locKeys(v)); addVendor(v);
+  if(ps.length<2 || li!=null){ const pp=ps.length<2?posOf(v):ps[li].pos; map.setView(pp,19); L.popup().setLatLng(pp).setContent(popHtml(v,false,ps.length<2?undefined:li)).openOn(map); return; }
+  map.closePopup();
+  map.fitBounds(L.latLngBounds(ps.map(p=>p.pos)),{paddingTopLeft:[40,130],paddingBottomRight:[40,120],maxZoom:19});
+}
+function nLocs(v){ const n=pinsOf(v).length; return n>1?n+' locations':''; }
 function syncClear(){ document.getElementById('qwrap').classList.toggle('has',!!document.getElementById('q').value); }
 function renderVendors(){
   syncClear();
@@ -801,7 +901,7 @@ function renderVendors(){
   if(query){
     const qaddr=parseAddr(query,true);
     if(qaddr.key) roadKey=qaddr.key;
-    else if(hits[0]) roadKey=parseAddr(hits[0].loc,true).key;
+    else if(hits[0]) roadKey=locKeys(hits[0]);
   }
   highlightRoad(roadKey);
   if(searching) hits.slice(0,250).forEach(addVendor);
@@ -816,7 +916,7 @@ function renderVendors(){
     const mix=hits.slice(0,nV).map(v=>({k:'v',v})).concat(evs.map(x=>({k:'e',x})));
     const more=hits.length>nV?`<div class="sug all" data-all="1"><b>Show all ${hits.length} matches ›</b></div>`:'';
     sug.innerHTML=nearRow+(mix.map(m=>m.k==='v'?`<div class="sug" data-name="${m.v.name.replace(/"/g,'')}">
-      <b>${m.v.name}</b><small>${m.v.loc||''}</small></div>`:`<div class="sug" data-evi="${m.x.i}"><b><span class="tag">EVENT</span>${esc(m.x.e.name)}</b><small>${evWhen(m.x.e)} \u00b7 ${esc(m.x.e.venue)}</small></div>`).join('')+more||(nearRow?'':'<div class="sug">No matches</div>'));
+      <b>${m.v.name}</b><small>${nLocs(m.v)?'<span class="nl">'+nLocs(m.v)+'</span> \u00b7 ':''}${m.v.loc||''}</small></div>`:`<div class="sug" data-evi="${m.x.i}"><b><span class="tag">EVENT</span>${esc(m.x.e.name)}</b><small>${evWhen(m.x.e)} \u00b7 ${esc(m.x.e.venue)}</small></div>`).join('')+more||(nearRow?'':'<div class="sug">No matches</div>'));
     sug.querySelectorAll('.sug').forEach(el=>{
       if(el.dataset.all){ el.onclick=()=>doFind(); return; }
       if(el.dataset.near){ el.onclick=()=>{ qEl.value=''; query=''; qEl.blur(); document.body.classList.remove('typing'); renderVendors(); showNear(); }; return; }
@@ -828,8 +928,7 @@ function renderVendors(){
         document.body.classList.remove('typing');
         renderVendors();
         clearEv(); if(evRouting()) rtEnd();
-        const pp=posOf(v); highlightRoad(parseAddr(v.loc,true).key); map.setView(pp,19); addVendor(v);
-        L.popup().setLatLng(pp).setContent(popHtml(v)).openOn(map);
+        showVendor(v);
         VIEW='search'; setSheet('peek');
       };
     });
@@ -844,7 +943,7 @@ function renderVendors(){
   el.innerHTML=list.map(v=>`
     <div class="card">
       <h3>${v.name}</h3>
-      <p>${v.loc}</p>
+      <p>${v.loc}</p>${nLocs(v)?`<p class="nl">\ud83d\udccd ${nLocs(v)} \u2014 Pin on map shows all</p>`:''}
       <p>${v.desc||''}</p>
       <div class="row">
         <button class="go">Pin on map</button>
@@ -853,7 +952,7 @@ function renderVendors(){
     </div>`).join('');
   el.querySelectorAll('button.go').forEach((b,idx)=>{
     const v=list[idx];
-    b.onclick=()=>{ clearEv(); const pp=posOf(v); highlightRoad(parseAddr(v.loc,true).key); setSheet('peek'); map.setView(pp,19); addVendor(v); L.popup().setLatLng(pp).setContent(popHtml(v)).openOn(map); };
+    b.onclick=()=>{ clearEv(); setSheet('peek'); showVendor(v); };
   });  const evq=evSearch(query);
   if(evq.length){ const nn=nyNow(), nk=nextEventKey(nn), h=`<div class="hsub">Events</div>`+evq.map(x=>evRow(x,nn,nk,true)).join(''); el.insertAdjacentHTML(list.length?'beforeend':'afterbegin',h); }
   if(!list.length && !evq.length) el.innerHTML='<div class="msg">No matches.</div>';
@@ -1021,11 +1120,12 @@ function getFix(cb){
 function nearFood(ll){
   const g=RT.g, food=DATA.vendors.filter(v=>(v.cats||[]).includes('food'));
   const S=g?rtProject(ll):null;
-  if(!S) return {mode:'line',items:food.map(v=>({v,d:hav(ll,posOf(v))})).sort((a,b)=>a.d-b.d).slice(0,15)};
+  const minBy=(v,fd)=>{ let b={v,d:Infinity,li:0}; pinsOf(v).forEach(p=>{ const d=fd(p.pos); if(d<b.d) b={v,d,li:p.i}; }); return b; };
+  if(!S) return {mode:'line',items:food.map(v=>minBy(v,q=>hav(ll,q))).sort((a,b)=>a.d-b.d).slice(0,15)};
   const n=g.nodes.length, dist=new Array(n).fill(Infinity), done=new Array(n).fill(false), es=g.edges[S.ei];
   dist[es.a]=S.t*es.w; dist[es.b]=Math.min(dist[es.b],(1-S.t)*es.w);
   for(;;){ let u=-1,bd=Infinity; for(let i=0;i<n;i++) if(!done[i]&&dist[i]<bd){bd=dist[i];u=i;} if(u<0) break; done[u]=true; g.adj[u].forEach(([v,w])=>{ if(dist[u]+w<dist[v]) dist[v]=dist[u]+w; }); }
-  const items=food.map(v=>{ const T=rtProject(posOf(v)); if(!T) return {v,d:Infinity}; const et=g.edges[T.ei]; let d=Math.min(dist[et.a]+T.t*et.w, dist[et.b]+(1-T.t)*et.w); if(T.ei===S.ei) d=Math.min(d,Math.abs(S.t-T.t)*es.w); return {v,d:S.d+d+T.d}; }).filter(x=>isFinite(x.d)).sort((a,b)=>a.d-b.d).slice(0,15);
+  const items=food.map(v=>minBy(v,q=>{ const T=rtProject(q); if(!T) return Infinity; const et=g.edges[T.ei]; let d=Math.min(dist[et.a]+T.t*et.w, dist[et.b]+(1-T.t)*et.w); if(T.ei===S.ei) d=Math.min(d,Math.abs(S.t-T.t)*es.w); return S.d+d+T.d; })).filter(x=>isFinite(x.d)).sort((a,b)=>a.d-b.d).slice(0,15);
   return {mode:'road',items};
 }
 function feet(m){ return (Math.max(10,Math.round(m*3.28084/10)*10)).toLocaleString('en-US')+' ft'; }
@@ -1047,7 +1147,7 @@ function renderNear(){
   if(N.state==='away'){ el.innerHTML='<div class="msg">You\u2019re away from the fair \u2014 Near me works once you\u2019re on the fairgrounds.</div>'; return; }
   const R=N.list;
   el.innerHTML=`<div class="hsub">Closest food \u00b7 ${R.mode==='road'?'walking distance along the fair roads':'straight-line distance (road map unavailable)'}${N.acc?' \u00b7 GPS \u00b1'+Math.round(N.acc)+' m':''}</div>`+
-    (R.items.map(x=>{ const vi=DATA.vendors.indexOf(x.v); return `<div class="nm" data-nv="${vi}"><div class="b"><b>${esc(x.v.name)}</b><small>${esc(x.v.loc||'')}</small></div><span class="d">${feet(x.d)}</span><button data-vi="${vi}">${RT.on&&RT.v===x.v?'End':'Walk'}</button></div>`; }).join('')||'<div class="msg">No food stands found.</div>');
+    (R.items.map(x=>{ const vi=DATA.vendors.indexOf(x.v); const ps=pinsOf(x.v), ml=ps.length>1; return `<div class="nm" data-nv="${vi}"${ml?` data-nl="${x.li}"`:''}><div class="b"><b>${esc(x.v.name)}</b><small>${ml?esc(ps[x.li].text)+' \u00b7 nearest of '+ps.length+' locations':esc(x.v.loc||'')}</small></div><span class="d">${feet(x.d)}</span><button data-vi="${vi}"${ml?` data-li="${x.li}"`:''}>${RT.on&&RT.v===x.v&&(!ml||RT.li===x.li)?'End':'Walk'}</button></div>`; }).join('')||'<div class="msg">No food stands found.</div>');
 }
 function renderView(){ if(VIEW==='whatson') renderWhatsOn(); else if(VIEW==='near') renderNear(); else if(VIEW==='search') renderVendors(); }
 function updPeek(){
@@ -1119,7 +1219,7 @@ function setSheet(st){
 document.getElementById('results').addEventListener('click',e=>{
   const wd=e.target.closest('[data-wd]'); if(wd){ e.preventDefault(); WO_DATE=wd.dataset.wd; renderWhatsOn(); return; }
   const r=e.target.closest('[data-evr]'); if(r){ const e2=DATA.events[+r.dataset.evr]; if(e2&&e2.lat!=null) openEvent(+r.dataset.evr); return; }
-  const nv=e.target.closest('[data-nv]'); if(nv){ const v=DATA.vendors[+nv.dataset.nv]; if(!v) return; clearEv(); const pp=posOf(v); highlightRoad(parseAddr(v.loc,true).key); setSheet('peek'); map.setView(pp,19); addVendor(v); L.popup().setLatLng(pp).setContent(popHtml(v)).openOn(map); }
+  const nv=e.target.closest('[data-nv]'); if(nv){ const v=DATA.vendors[+nv.dataset.nv]; if(!v) return; clearEv(); setSheet('peek'); showVendor(v,nv.dataset.nl!=null?+nv.dataset.nl:undefined); }
 });
 document.getElementById('lwhat').onclick=e=>{ e.preventDefault(); showWhatsOn(); };
 document.getElementById('lnear').onclick=e=>{ e.preventDefault(); showNear(); };
