@@ -17,7 +17,12 @@
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100%;height:100dvh;width:100%;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--ink);overflow:hidden}
 #map{position:fixed;inset:0;width:100%;height:100%;height:100dvh;z-index:0}
-.top{position:absolute;left:12px;right:12px;top:calc(10px + env(safe-area-inset-top));z-index:500;display:flex;flex-direction:column;gap:8px}
+/* v48: iOS 26+ draws its own frosted blur over the top of Home Screen web apps unless a painted fixed element sits at the very top.
+   In standalone mode a thin solid dark scrim covers exactly the status-bar safe area (no blur), so the map below stays sharp. */
+#sbscrim{display:none;position:fixed;left:0;right:0;top:0;height:var(--sat,env(safe-area-inset-top));background:var(--bg);z-index:600;pointer-events:none}
+html.standalone #sbscrim{display:block}
+@media (display-mode: standalone){ #sbscrim{display:block} }
+.top{position:absolute;left:12px;right:12px;top:calc(10px + var(--sat,env(safe-area-inset-top)));z-index:500;display:flex;flex-direction:column;gap:8px}
 .search{display:flex;gap:8px}
 .search input{flex:1;border:0;border-radius:14px;padding:12px 14px;font-size:16px;background:var(--card);color:var(--ink);box-shadow:0 8px 24px rgba(0,0,0,.35)}
 .search button{border:0;border-radius:14px;padding:0 14px;background:var(--accent);color:#2a1a00;font-weight:700}
@@ -106,6 +111,7 @@ body.typing .sheet,body.typing .fabs{visibility:hidden;pointer-events:none}
 </head>
 <body>
 <div id="map"></div>
+<div id="sbscrim" aria-hidden="true"></div>
 <div class="top">
   <div class="search">
     <span class="qwrap" id="qwrap"><input id="q" type="search" placeholder="Search funnel cake, 7th Street…" enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false"/><button type="button" class="qclear" id="qclear" tabindex="-1" aria-label="Clear search">×</button></span>
@@ -131,7 +137,8 @@ body.typing .sheet,body.typing .fabs{visibility:hidden;pointer-events:none}
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-const VER='v47';
+const VER='v48';
+if(window.navigator.standalone===true || (window.matchMedia&&matchMedia('(display-mode: standalone)').matches)) document.documentElement.classList.add('standalone');
 const BUST=Date.now();
 function loadJSON(url){
   return fetch(url+(url.includes('?')?'&':'?')+'v='+BUST,{cache:'no-store'}).then(r=>r.json());
