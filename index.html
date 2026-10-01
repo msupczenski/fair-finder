@@ -80,6 +80,7 @@ body.sheetup .fabs{visibility:hidden;pointer-events:none}
 #rtxt{flex:1;min-width:0;font-size:14px;font-weight:600;line-height:1.25}
 #rend{flex:0 0 auto;border:0;border-radius:10px;padding:9px 14px;background:var(--accent);color:#2a1a00;font-weight:700;font-size:14px}
 .plocs{margin-top:4px}.ploc{display:flex;align-items:center;gap:8px;justify-content:space-between;padding:3px 0;border-top:1px solid rgba(0,0,0,.08)}.ploc.here span{font-weight:700}.ploc .pwalk{margin-top:0;padding:4px 9px}.pn{color:#7a5a20}.nl{color:var(--accent);font-weight:700}
+.dist{color:#3aa0ff;font-weight:700}.sug .dist{font-size:12px}.card .dist{margin:2px 0}.hsub.geo{cursor:pointer;color:#9fd0ff}
 .pwalk{margin-top:6px;border:0;border-radius:8px;padding:6px 10px;background:var(--accent);color:#2a1a00;font-weight:700;font-size:12px}
 .chips{display:flex;gap:6px;overflow:auto}
 .chips button{flex:0 0 auto;border:0;border-radius:999px;padding:7px 12px;background:#3a2a18;color:var(--ink);font-size:13px}
@@ -138,7 +139,7 @@ body.typing .sheet,body.typing .fabs{visibility:hidden;pointer-events:none}
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-const VER='v49';
+const VER='v50';
 if(window.navigator.standalone===true || (window.matchMedia&&matchMedia('(display-mode: standalone)').matches)) document.documentElement.classList.add('standalone');
 const BUST=Date.now();
 function loadJSON(url){
@@ -735,7 +736,7 @@ function rtWatch(){
   if(!navigator.geolocation){ RT.gpsOff=true; return; }
   RT.watch=navigator.geolocation.watchPosition(p=>{
     RT.gpsOff=false;
-    RT.fix={ll:[p.coords.latitude,p.coords.longitude],acc:p.coords.accuracy,t:Date.now()}; LASTFIX=RT.fix;
+    RT.fix={ll:[p.coords.latitude,p.coords.longitude],acc:p.coords.accuracy,t:Date.now()}; LASTFIX=RT.fix; geoStart();
     // v49: 'Walk to nearest' started before any GPS fix: pick the nearest spot once the first fix arrives
     if(RT.on && RT.auto){ RT.auto=false; const np=nearestPin(RT.v,RT.fix.ll); if(np && np.i!==RT.li){ RT.li=np.i; RT.pin=np.pos; RT.path=null; RT.fitted=0; rtLabels(); } }
     placeMe(p.coords.latitude,p.coords.longitude,p.coords.accuracy);
@@ -754,6 +755,7 @@ function rtStart(v,li){
   if(!RT.g) return;
   let lp=null; if(!v.ev && !v.pin){ const ps=pinsOf(v); lp=(li!=null&&ps[li])||nearestPin(v); }
   RT.li=lp?lp.i:null; RT.multi=!!(lp&&pinsOf(v).length>1);
+  if(geoLive() && (!RT.fix || RT.fix.t<LASTFIX.t)){ RT.fix=LASTFIX; RT.gpsOff=false; }
   const fx=RT.fix||LASTFIX; RT.auto=RT.multi && li==null && !(fx && Date.now()-fx.t<10*60000);
   RT.on=true; RT.v=v; RT.pin=v.pin||(lp?lp.pos:posOf(v)); RT.path=null; RT.rem=null; RT.arrived=false; RT.lastRoute=0; RT.reroutes=0; RT.fitted=0;
   RT.fallback=rtGate();
@@ -860,19 +862,19 @@ function matches(v){
   const c=vNorm(v); return ws.every(x=>wIn(c.b,x));
 }
 // walking distance (fair roads) from the last GPS fix, only if we already have one and are on the grounds; no GPS prompt from search
-let SDIST={t:-1,m:null};
+let SDIST={t:-1,m:null,li:new Map()};
 function searchDist(){
   const f=LASTFIX; if(!f || AWAY || Date.now()-f.t>10*60000 || isAway(f.ll)) return null;
   if(SDIST.t===f.t) return SDIST.m;
-  const m=new Map(), g=RT.g, S=g?rtProject(f.ll):null;
-  if(!S){ DATA.vendors.forEach(v=>m.set(v,Math.min(...pinsOf(v).map(p=>hav(f.ll,p.pos))))); }
+  const m=new Map(), li=new Map(), g=RT.g, S=g?rtProject(f.ll):null;
+  if(!S){ DATA.vendors.forEach(v=>{ let b=Infinity; pinsOf(v).forEach(p=>{ const d=hav(f.ll,p.pos); if(d<b){ b=d; li.set(v,p.i); } }); m.set(v,b); }); }
   else {
     const n=g.nodes.length, dist=new Array(n).fill(Infinity), done=new Array(n).fill(false), es=g.edges[S.ei];
     dist[es.a]=S.t*es.w; dist[es.b]=Math.min(dist[es.b],(1-S.t)*es.w);
     for(;;){ let u=-1,bd=Infinity; for(let i=0;i<n;i++) if(!done[i]&&dist[i]<bd){bd=dist[i];u=i;} if(u<0) break; done[u]=true; g.adj[u].forEach(([v,w])=>{ if(dist[u]+w<dist[v]) dist[v]=dist[u]+w; }); }
-    DATA.vendors.forEach(v=>{ let best=Infinity; pinsOf(v).forEach(p=>{ const T=rtProject(p.pos); let d=Infinity; if(T){ const et=g.edges[T.ei]; d=Math.min(dist[et.a]+T.t*et.w, dist[et.b]+(1-T.t)*et.w); if(T.ei===S.ei) d=Math.min(d,Math.abs(S.t-T.t)*es.w); d+=S.d+T.d; } if(d<best) best=d; }); m.set(v,best); });
+    DATA.vendors.forEach(v=>{ let best=Infinity; pinsOf(v).forEach(p=>{ const T=rtProject(p.pos); let d=Infinity; if(T){ const et=g.edges[T.ei]; d=Math.min(dist[et.a]+T.t*et.w, dist[et.b]+(1-T.t)*et.w); if(T.ei===S.ei) d=Math.min(d,Math.abs(S.t-T.t)*es.w); d+=S.d+T.d; } if(d<best){ best=d; li.set(v,p.i); } }); m.set(v,best); });
   }
-  SDIST={t:f.t,m}; return m;
+  SDIST={t:f.t,m,li}; return m;
 }
 function addVendor(v){
   const color=COLORS[(v.cats||[])[0]]||COLORS.other;
@@ -885,7 +887,7 @@ function locKeys(v){ return pinsOf(v).map(p=>p.key); }
 function showVendor(v,li){
   const ps=pinsOf(v);
   highlightRoad(li!=null&&ps.length>1?ps[li].key:locKeys(v)); addVendor(v);
-  if(ps.length<2 || li!=null){ const pp=ps.length<2?posOf(v):ps[li].pos; map.setView(pp,19); L.popup().setLatLng(pp).setContent(popHtml(v,false,ps.length<2?undefined:li)).openOn(map); return; }
+  if(ps.length<2 || li!=null){ const pp=ps.length<2?posOf(v):ps[li].pos; map.setView(pp,19,{animate:false}); /* v50: an animated pan could stop short when the popup opened mid-pan */ L.popup().setLatLng(pp).setContent(popHtml(v,false,ps.length<2?undefined:li)).openOn(map); return; }
   map.closePopup();
   map.fitBounds(L.latLngBounds(ps.map(p=>p.pos)),{paddingTopLeft:[40,130],paddingBottomRight:[40,120],maxZoom:19});
 }
@@ -896,7 +898,8 @@ function renderVendors(){
   layers.clearLayers();
   const searching=!!(query||filterCat!=='all');
   const DM=query?searchDist():null, SCM=new Map();
-  const hits=DATA.vendors.filter(matches).map(v=>({v,sc:query?score(v):0,d:DM?DM.get(v):0})).sort((a,b)=>a.sc-b.sc||a.d-b.d||a.v.name.localeCompare(b.v.name)).map(x=>(SCM.set(x.v,x.sc),x.v));
+  // v50: with a fix on the grounds every vendor match is sorted by walking distance (nearest spot); otherwise v47 ranking
+  const hits=DATA.vendors.filter(matches).map(v=>({v,sc:query?score(v):0,d:DM?DM.get(v):0})).sort(DM?((a,b)=>(a.d-b.d)||a.sc-b.sc||a.v.name.localeCompare(b.v.name)):((a,b)=>a.sc-b.sc||a.d-b.d||a.v.name.localeCompare(b.v.name))).map(x=>(SCM.set(x.v,x.sc),x.v));
   let roadKey=null;
   if(query){
     const qaddr=parseAddr(query,true);
@@ -906,7 +909,9 @@ function renderVendors(){
   highlightRoad(roadKey);
   if(searching) hits.slice(0,250).forEach(addVendor);
   const list=searching?hits:[];
-  SEARCH={on:searching,n:hits.length,ev:query?evSearch(query).length:0};
+  SEARCH={on:searching,n:hits.length,ev:query?evSearch(query).length:0,near:DM&&hits.length&&isFinite(DM.get(hits[0]))?DM.get(hits[0]):null,hits};
+  if(DM && LASTFIX) GEO.lastLL=LASTFIX.ll;
+  const dTxt=v=>{ if(!DM) return ''; const d=DM.get(v); if(!isFinite(d)) return ''; const ps=pinsOf(v); return fmtWalk(d)+(ps.length>1?' to '+ps[SDIST.li.get(v)||0].text:''); };
   if(VIEW==='search' || (searching && document.body.classList.contains('typing'))) VIEW=searching?'search':'';
   const sug=document.getElementById('suggest');
   const nearRow=(!query || /^n(e(a(r( (m(e)?)?)?)?)?)?$/.test(query))?'<div class="sug near" data-near="1"><b>\ud83d\udccd Near me \u2014 closest food</b><small>Food stands by walking distance from where you are</small></div>':'';
@@ -916,7 +921,7 @@ function renderVendors(){
     const mix=hits.slice(0,nV).map(v=>({k:'v',v})).concat(evs.map(x=>({k:'e',x})));
     const more=hits.length>nV?`<div class="sug all" data-all="1"><b>Show all ${hits.length} matches ›</b></div>`:'';
     sug.innerHTML=nearRow+(mix.map(m=>m.k==='v'?`<div class="sug" data-name="${m.v.name.replace(/"/g,'')}">
-      <b>${m.v.name}</b><small>${nLocs(m.v)?'<span class="nl">'+nLocs(m.v)+'</span> \u00b7 ':''}${m.v.loc||''}</small></div>`:`<div class="sug" data-evi="${m.x.i}"><b><span class="tag">EVENT</span>${esc(m.x.e.name)}</b><small>${evWhen(m.x.e)} \u00b7 ${esc(m.x.e.venue)}</small></div>`).join('')+more||(nearRow?'':'<div class="sug">No matches</div>'));
+      <b>${m.v.name}</b><small>${dTxt(m.v)?'<span class="dist">'+esc(dTxt(m.v))+'</span><br>':''}${nLocs(m.v)?'<span class="nl">'+nLocs(m.v)+'</span> \u00b7 ':''}${m.v.loc||''}</small></div>`:`<div class="sug" data-evi="${m.x.i}"><b><span class="tag">EVENT</span>${esc(m.x.e.name)}</b><small>${evWhen(m.x.e)} \u00b7 ${esc(m.x.e.venue)}</small></div>`).join('')+more||(nearRow?'':'<div class="sug">No matches</div>'));
     sug.querySelectorAll('.sug').forEach(el=>{
       if(el.dataset.all){ el.onclick=()=>doFind(); return; }
       if(el.dataset.near){ el.onclick=()=>{ qEl.value=''; query=''; qEl.blur(); document.body.classList.remove('typing'); renderVendors(); showNear(); }; return; }
@@ -938,11 +943,11 @@ function renderVendors(){
   }
   updPeek();
   if(VIEW!=='search') return;
-  document.getElementById('stitle').textContent=hits.length+' match'+(hits.length===1?'':'es');
+  document.getElementById('stitle').textContent=hits.length+' match'+(hits.length===1?'':'es')+(DM&&query&&SEARCH.near!=null?' \u00b7 nearest first':'');
   const el=document.getElementById('results');
   el.innerHTML=list.map(v=>`
     <div class="card">
-      <h3>${v.name}</h3>
+      <h3>${v.name}</h3>${dTxt(v)?`<p class="dist">\ud83d\udeb6 ${esc(dTxt(v))}</p>`:''}
       <p>${v.loc}</p>${nLocs(v)?`<p class="nl">\ud83d\udccd ${nLocs(v)} \u2014 Pin on map shows all</p>`:''}
       <p>${v.desc||''}</p>
       <div class="row">
@@ -956,6 +961,7 @@ function renderVendors(){
   });  const evq=evSearch(query);
   if(evq.length){ const nn=nyNow(), nk=nextEventKey(nn), h=`<div class="hsub">Events</div>`+evq.map(x=>evRow(x,nn,nk,true)).join(''); el.insertAdjacentHTML(list.length?'beforeend':'afterbegin',h); }
   if(!list.length && !evq.length) el.innerHTML='<div class="msg">No matches.</div>';
+  if(query && !DM && GEO.perm!=='granted' && navigator.geolocation) el.insertAdjacentHTML('afterbegin','<div class="hsub geo" data-geo="1">\ud83d\udccd <u>Turn on location to sort by distance</u></div>');
 }
 function render(){ renderVendors(); }
 const chipData=[['all','All'],['food','Food'],['crafts','Crafts'],['new','New 2026']];
@@ -990,7 +996,7 @@ let qClrAt=0;
 },{passive:false}));
 qClr.addEventListener('click',e=>{ e.preventDefault(); if(Date.now()-qClrAt>400){ qClrAt=Date.now(); clearSearch(); } });
 document.getElementById('rend').onclick=e=>{ e.stopPropagation(); rtEnd(); };
-function doFind(){ if(!evRouting()) clearEv(); query=qEl.value.trim().toLowerCase(); qEl.blur(); document.body.classList.remove('typing'); VIEW=(query||filterCat!=='all')?'search':''; renderVendors(); setSheet(VIEW?'half':'peek'); }
+function doFind(){ if(!evRouting()) clearEv(); query=qEl.value.trim().toLowerCase(); qEl.blur(); document.body.classList.remove('typing'); VIEW=(query||filterCat!=='all')?'search':''; renderVendors(); setSheet(VIEW?'half':'peek'); if(VIEW==='search' && query){ if(searchDist()) fitSearch(); else GEO.fitPend=GEO.watch!=null; } }
 document.getElementById('go').onclick=doFind;
 qEl.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); doFind(); } });
 function mergeFixes(fixes){
@@ -1014,9 +1020,67 @@ function placeMe(lat,lng,acc){
 }
 document.getElementById('follow').onclick=()=>{
   follow=!follow; document.getElementById('follow').style.background=follow?'#3aa0ff':'';
-  if(follow){ if(!navigator.geolocation){ follow=false; document.getElementById('follow').style.background=''; return; } if(watchId) navigator.geolocation.clearWatch(watchId); let first=true; watchId=navigator.geolocation.watchPosition(p=>{ LASTFIX={ll:[p.coords.latitude,p.coords.longitude],acc:p.coords.accuracy,t:Date.now()}; placeMe(p.coords.latitude,p.coords.longitude,p.coords.accuracy); if(first && AWAY) map.setView(FAIR_CORE.getCenter(),0); first=false; },()=>{},{enableHighAccuracy:true,maximumAge:1000}); }
-  else if(watchId){ navigator.geolocation.clearWatch(watchId); watchId=null; }
+  if(follow){ if(!navigator.geolocation){ follow=false; document.getElementById('follow').style.background=''; return; }
+    GEO.followFirst=true; geoStart();
+    if(LASTFIX && Date.now()-LASTFIX.t<30000){ GEO.followFirst=false; placeMe(LASTFIX.ll[0],LASTFIX.ll[1],LASTFIX.acc); if(AWAY) map.setView(FAIR_CORE.getCenter(),0); } }
+  // v50: turning follow off only stops re-centring; the location dot keeps updating
 };
+// ---- v50: one shared location watch so the blue dot shows in every mode (search included) ----
+// Started on load only if location is already granted (no prompt); ➤, Near me and Walk start it otherwise.
+let GEO={perm:null,watch:null,followFirst:false,fitPend:false,lastLL:null};
+function geoStart(){
+  if(GEO.watch!=null || !navigator.geolocation) return;
+  GEO.watch=navigator.geolocation.watchPosition(p=>{
+    const first=!LASTFIX;
+    LASTFIX={ll:[p.coords.latitude,p.coords.longitude],acc:p.coords.accuracy,t:Date.now()};
+    GEO.perm='granted'; try{ localStorage.setItem('ffGeo','1'); }catch(e){}
+    placeMe(p.coords.latitude,p.coords.longitude,p.coords.accuracy);
+    if(GEO.followFirst){ GEO.followFirst=false; if(AWAY && follow) map.setView(FAIR_CORE.getCenter(),0); }
+    if(RT.on && (!RT.fix || RT.fix.t<LASTFIX.t-1500)){ RT.fix=LASTFIX; RT.gpsOff=false; rtUpdate(); }
+    geoTick(first);
+  },err=>{
+    if(err.code===1){ GEO.perm='denied'; navigator.geolocation.clearWatch(GEO.watch); GEO.watch=null; if(VIEW==='search') renderVendors(); }
+  },{enableHighAccuracy:true,maximumAge:2000});
+}
+// keep an open search list sorted by distance as the fix arrives / the user walks (not while a popup is open or typing)
+function geoTick(first){
+  if(VIEW!=='search' || !query) return;
+  const ll=LASTFIX.ll, moved=!GEO.lastLL || hav(ll,GEO.lastLL)>25;
+  if(!(first||moved||GEO.fitPend)) return;
+  if(document.querySelector('.leaflet-popup') || document.body.classList.contains('typing')) return;
+  const y=sbodyEl.scrollTop; renderVendors(); sbodyEl.scrollTop=y;
+  if(GEO.fitPend) fitSearch();
+}
+function geoInit(){
+  const saved=(()=>{ try{ return !!localStorage.getItem('ffGeo'); }catch(e){ return false; } })();
+  if(!navigator.geolocation) return;
+  if(navigator.permissions && navigator.permissions.query){
+    navigator.permissions.query({name:'geolocation'}).then(st=>{
+      GEO.perm=st.state; if(st.state==='granted') geoStart();
+      st.onchange=()=>{ GEO.perm=st.state; if(st.state==='granted') geoStart(); if(VIEW==='search') renderVendors(); };
+      if(VIEW==='search') renderVendors();
+    }).catch(()=>{ if(saved) geoStart(); });
+  } else if(saved) geoStart();
+}
+// the shared watch only reports when the phone moves, so while it runs its last fix counts as current
+function geoLive(){ return GEO.watch!=null && !!LASTFIX && Date.now()-LASTFIX.t<5*60000; }
+function fmtWalk(m){ return (m<1000?Math.max(10,Math.round(m/10)*10)+' m':(m/1000).toFixed(1)+' km')+' \u00b7 '+Math.max(1,Math.round(m/1.341/60))+' min'; }
+function fmtM(m){ return m<1000?Math.max(10,Math.round(m/10)*10)+' m':(m/1000).toFixed(1)+' km'; }
+function geoOnGrounds(){ const f=LASTFIX; return !!(f && !AWAY && Date.now()-f.t<10*60000 && !isAway(f.ll)); }
+// map shows the dot + the nearest few matches (2nd/3rd only if not much farther than the nearest)
+function fitSearch(){
+  GEO.fitPend=false;
+  const DM=searchDist(); if(!DM || !SEARCH.hits || !SEARCH.hits.length) return;
+  const h=SEARCH.hits.filter(v=>isFinite(DM.get(v))); if(!h.length) return;
+  const d1=DM.get(h[0]), pts=[LASTFIX.ll];
+  h.slice(0,3).forEach((v,i)=>{ const d=DM.get(v); if(i===0 || d<=Math.max(2*d1,d1+150)){ const ps=pinsOf(v); pts.push(ps[SDIST.li.get(v)||0].pos); } });
+  if(follow){ follow=false; document.getElementById('follow').style.background=''; }
+  const fit=()=>{ const top=window.innerHeight-sheetH(SHEET), bot=Math.max(110,window.innerHeight-top+20);
+    map.fitBounds(L.latLngBounds(pts),{paddingTopLeft:[40,130],paddingBottomRight:[40,bot],maxZoom:19,animate:false});
+    return pts.every(p=>{ const c=map.latLngToContainerPoint(p); return c.y<top-12 && c.y>110 && c.x>8 && c.x<window.innerWidth-8; }); };
+  // the map is held on the fairgrounds (v42), so near an edge the half sheet can cover the dot: drop to peek ('List ›' brings it back)
+  if(!fit() && SHEET!=='peek'){ setSheet('peek'); setTimeout(fit,0); }
+}
 document.getElementById('reload').onclick=()=>{ window.location.replace(location.pathname+'?v='+Date.now()); };
 setTimeout(()=>map.invalidateSize(),300);
 map.on('zoomend',()=>{ if(map.getZoom()>19) map.setZoom(19); });
@@ -1113,9 +1177,9 @@ function renderWhatsOn(flashI,keep){
   if(tgt){ if(flashI!=null) tgt.classList.add('flash'); setTimeout(()=>{ sb.scrollTop=Math.max(0,tgt.offsetTop-sb.offsetTop-60); },30); }
 }
 function getFix(cb){
-  if(LASTFIX && Date.now()-LASTFIX.t<15000) return cb(LASTFIX);
+  if(LASTFIX && (Date.now()-LASTFIX.t<15000 || geoLive())) return cb(LASTFIX);
   if(!navigator.geolocation) return cb(null,{code:2});
-  navigator.geolocation.getCurrentPosition(p=>{ LASTFIX={ll:[p.coords.latitude,p.coords.longitude],acc:p.coords.accuracy,t:Date.now()}; placeMe(p.coords.latitude,p.coords.longitude,p.coords.accuracy); cb(LASTFIX); },err=>cb(null,err),{enableHighAccuracy:true,timeout:10000,maximumAge:5000});
+  navigator.geolocation.getCurrentPosition(p=>{ LASTFIX={ll:[p.coords.latitude,p.coords.longitude],acc:p.coords.accuracy,t:Date.now()}; placeMe(p.coords.latitude,p.coords.longitude,p.coords.accuracy); geoStart(); cb(LASTFIX); },err=>cb(null,err),{enableHighAccuracy:true,timeout:10000,maximumAge:5000});
 }
 function nearFood(ll){
   const g=RT.g, food=DATA.vendors.filter(v=>(v.cats||[]).includes('food'));
@@ -1153,7 +1217,7 @@ function renderView(){ if(VIEW==='whatson') renderWhatsOn(); else if(VIEW==='nea
 function updPeek(){
   const t=document.getElementById('ptxt'), mo=document.getElementById('pmore'); if(!t) return;
   let main, more='';
-  if(VIEW==='search' && SEARCH.on){ main=SEARCH.n+' match'+(SEARCH.n===1?'':'es')+(SEARCH.ev?' \u00b7 '+SEARCH.ev+' event'+(SEARCH.ev===1?'':'s'):''); more=(SHEET==='peek'||SHEET==='tiny')?'List \u203a':''; }
+  if(VIEW==='search' && SEARCH.on){ main=SEARCH.n+' match'+(SEARCH.n===1?'':'es')+(query&&SEARCH.near!=null?' \u00b7 nearest '+fmtM(SEARCH.near):'')+(SEARCH.ev?' \u00b7 '+SEARCH.ev+' event'+(SEARCH.ev===1?'':'s'):''); more=(SHEET==='peek'||SHEET==='tiny')?'List \u203a':''; }
   else { main=hoursLine()||(DATA.vendors.length?DATA.vendors.length+' vendors':'Loading\u2026'); more=DATA.events.length&&(SHEET==='peek'||SHEET==='tiny')?'What\u2019s on \u203a':''; }
   t.innerHTML=esc(main)+(AWAY?'<small class="aw">You\u2019re away from the fair \u2014 showing the fairgrounds</small>':'');
   mo.textContent=more;
@@ -1217,6 +1281,7 @@ function setSheet(st){
   },true);
 })();
 document.getElementById('results').addEventListener('click',e=>{
+  const gh=e.target.closest('[data-geo]'); if(gh){ e.preventDefault(); GEO.fitPend=true; geoStart(); return; }
   const wd=e.target.closest('[data-wd]'); if(wd){ e.preventDefault(); WO_DATE=wd.dataset.wd; renderWhatsOn(); return; }
   const r=e.target.closest('[data-evr]'); if(r){ const e2=DATA.events[+r.dataset.evr]; if(e2&&e2.lat!=null) openEvent(+r.dataset.evr); return; }
   const nv=e.target.closest('[data-nv]'); if(nv){ const v=DATA.vendors[+nv.dataset.nv]; if(!v) return; clearEv(); setSheet('peek'); showVendor(v,nv.dataset.nl!=null?+nv.dataset.nl:undefined); }
@@ -1236,7 +1301,7 @@ function boot(){
     ...['vendors-0.json','vendors-1.json','vendors-2.json','vendors-3.json','vendors-4.json','vendors-5.json','vendors-6.json','vendors-7.json'].map(loadJSON)
   ]).then(([landmarks,fixes,events,hours,...chunks])=>{
     mergeFixes(fixes);
-    DATA.landmarks=landmarks; DATA.vendors=chunks.flat(); DATA.events=(events&&events.events)||[]; DATA.hours=hours; applyFairBounds(); render(); updPeek();
+    DATA.landmarks=landmarks; DATA.vendors=chunks.flat(); DATA.events=(events&&events.events)||[]; DATA.hours=hours; applyFairBounds(); render(); updPeek(); geoInit();
   }).catch(err=>{ document.getElementById('ptxt').textContent='Failed to load'; console.error(err); });
 }
 boot();
